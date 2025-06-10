@@ -2,15 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::common::IntentMessage;
-use crate::common::{to_signed_response, IntentScope, ProcessDataRequest, ProcessedDataResponse};
+use crate::common::{to_signed_response, IntentScope, ProcessDataRequest, ProcessedDataResponse, get_attestation};
 use crate::task_runner::{NodeTaskRunner, TaskConfig};
 use crate::AppState;
 use crate::EnclaveError;
 use axum::extract::State;
 use axum::Json;
 use serde::{Deserialize, Serialize};
-
 use std::sync::Arc;
+use tower_http::cors::{CorsLayer, AllowOrigin, AllowHeaders};
+use std::env;
+use axum::routing::{get, post};
+use axum::Router;
+use axum::http::{HeaderValue, Method, header::{CONTENT_TYPE, AUTHORIZATION, ACCEPT, ORIGIN, REFERER, USER_AGENT}};
+use crate::common::{health_check};
+
 /// ====
 /// Core Nautilus server logic, replace it with your own
 /// relavant structs and process_data endpoint.
@@ -19,9 +25,8 @@ use std::sync::Arc;
 /// Inner type T for IntentMessage<T>
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TaskResponse {
-    pub task_id: String,
     pub status: String,
-    pub stdout: String,
+    pub data: Option<ProcessedData>,
     pub stderr: String,
     pub exit_code: i32,
     pub execution_time_ms: u64,
@@ -30,23 +35,44 @@ pub struct TaskResponse {
 /// Inner type T for ProcessDataRequest<T>
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TaskRequest {
-    pub task_path: Option<String>,
     pub timeout_secs: Option<u64>,
     pub args: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProcessedData {
+    #[serde(rename = "walrusUrl")]
+    pub walrus_url: String,
+    #[serde(rename = "attestationObjId")]
+    pub attestation_obj_id: String,
+    #[serde(rename = "onChainFileObjId")]
+    pub on_chain_file_obj_id: String,
+    #[serde(rename = "blobId")]
+    pub blob_id: Option<String>,
 }
 
 pub async fn process_data(
     State(state): State<Arc<AppState>>,
     Json(request): Json<ProcessDataRequest<TaskRequest>>,
-) -> Result<Json<ProcessedDataResponse<IntentMessage<TaskResponse>>>, EnclaveError> {
-    // Generate unique task ID
-    let task_id = uuid::Uuid::new_v4().to_string();
+) -> Result<Json<TaskResponse>, EnclaveError> {
+    // get attestation
+    let attestationInfo = get_attestation(State(state.clone())).await?;
+    
+    // Get the absolute path to nodejs-task
+    let current_dir = std::env::current_dir().unwrap();
+    let root_dir = current_dir.parent().unwrap().parent().unwrap();
+    let task_path = root_dir.join("nodejs-task").to_string_lossy().into_owned();
     
     // Configure task runner
     let task_config = TaskConfig {
-        task_path: request.payload.task_path.unwrap_or_else(|| "nodejs-task".to_string()),
-        timeout_secs: request.payload.timeout_secs.unwrap_or(30),
-        args: request.payload.args.unwrap_or_default(),
+        task_path,
+        timeout_secs: request.payload.timeout_secs.unwrap_or(120),
+        args: request.payload.args
+            .map(|mut args| {
+                args.push(attestationInfo.attestation.enclaveId.clone());
+                args
+            })
+            .unwrap_or_default(),
     };
     
     // Create and run the task
@@ -54,33 +80,27 @@ pub async fn process_data(
     let task_output = task_runner.run().await.map_err(|e| {
         EnclaveError::GenericError(format!("Failed to execute Node.js task: {}", e))
     })?;
-    
-    // Get current timestamp
-    let current_timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| EnclaveError::GenericError(format!("Failed to get current timestamp: {}", e)))?
-        .as_millis() as u64;
 
-    // Determine status based on exit code
-    let status = if task_output.exit_code == 0 {
-        "success".to_string()
-    } else {
-        "failed".to_string()
-    };
+    // If task failed, return error
+    if task_output.exit_code != 0 {
+        return Err(EnclaveError::GenericError(format!(
+            "Task failed with exit code {}: {}",
+            task_output.exit_code,
+            task_output.stderr
+        )));
+    }
 
-    Ok(Json(to_signed_response(
-        &state.eph_kp,
-        TaskResponse {
-            task_id,
-            status,
-            stdout: task_output.stdout,
-            stderr: task_output.stderr,
-            exit_code: task_output.exit_code,
-            execution_time_ms: task_output.execution_time_ms,
-        },
-        current_timestamp,
-        IntentScope::Weather, // You may want to create a new IntentScope::Task
-    )))
+    // Parse the stdout JSON
+    let data = serde_json::from_str::<ProcessedData>(&task_output.stdout)
+        .map_err(|e| EnclaveError::GenericError(format!("Failed to parse task output: {}", e)))?;
+
+    Ok(Json(TaskResponse {
+        status: "success".to_string(),
+        data: Some(data),
+        stderr: task_output.stderr,
+        exit_code: task_output.exit_code,
+        execution_time_ms: task_output.execution_time_ms,
+    }))
 }
 
 #[cfg(test)]

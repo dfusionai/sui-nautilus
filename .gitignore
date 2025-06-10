@@ -10,3 +10,7 @@ secrets-policy.json
 
 /out
 /target
+
+/nodejs-task/node_modules
+/nodejs-task/.tool-versions
+/nodejs-task/.env

@@ -8,7 +8,7 @@ use nautilus_server::app::process_data;
 use nautilus_server::common::{get_attestation, health_check};
 use nautilus_server::AppState;
 use std::sync::Arc;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{Any, CorsLayer, AllowHeaders};
 use tracing::info;
 
 #[tokio::main]
@@ -24,7 +24,7 @@ async fn main() -> Result<()> {
     let state = Arc::new(AppState { eph_kp, api_key });
 
     // Define your own restricted CORS policy here if needed.
-    let cors = CorsLayer::new().allow_methods(Any).allow_headers(Any);
+    let cors = CorsLayer::new().allow_methods(Any).allow_headers(AllowHeaders::any()).allow_origin(Any);
 
     let app = Router::new()
         .route("/", get(ping))
