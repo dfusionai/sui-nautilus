@@ -149,7 +149,7 @@ async function decryptFile(fileObjectId, attestationObjId, encryptedFile) {
 function processData(rawData) {
   // Initialize refined structure
   const refinedData = {
-    chat_id: rawData.chats[0].chat_id,
+    revision: rawData.revision,
     user: rawData.user,
     messages: [],
   };
@@ -158,42 +158,44 @@ function processData(rawData) {
   const users = [rawData.user, rawData.chats[0].chat_id];
   let lastUserIndex = 0;
 
-  // Process each message
-  rawData.chats[0].contents.forEach((msg) => {
-    // Convert timestamp to ISO 8601
-    const date = new Date(msg.date * 1000).toISOString();
-    const editDate = msg.editDate
-      ? new Date(msg.editDate * 1000).toISOString()
-      : null;
+  // Process all chats
+  rawData.chats.forEach((chat) => {
+    chat.contents.forEach((msg) => {
+      // Convert timestamp to ISO 8601
+      const date = new Date(msg.date * 1000).toISOString();
+      const editDate = msg.editDate
+        ? new Date(msg.editDate * 1000).toISOString()
+        : null;
 
-    // Impute missing fromId (alternate between users)
-    const fromId = msg.fromId ? msg.fromId.userId : users[lastUserIndex];
-    lastUserIndex = (lastUserIndex + 1) % 2;
+      // Impute missing fromId (alternate between users)
+      const fromId = msg.fromId ? msg.fromId.userId : users[lastUserIndex];
+      lastUserIndex = (lastUserIndex + 1) % 2;
 
-    // Clean message text (basic typo correction)
-    let message = msg.message;
-    if (message === "listner workign?") {
-      message = "listener working?";
-    }
+      // Clean message text (basic typo correction)
+      let message = msg.message;
+      if (message === "listner workign?") {
+        message = "listener working?";
+      }
 
-    // Simplify reactions
-    let reactions = null;
-    if (msg.reactions) {
-      reactions = {
-        emoji: msg.reactions.recentReactions[0].reaction.emoticon,
-        count: msg.reactions.results[0].count,
-      };
-    }
+      // Simplify reactions
+      let reactions = null;
+      if (msg.reactions) {
+        reactions = {
+          emoji: msg.reactions.recentReactions[0].reaction.emoticon,
+          count: msg.reactions.results[0].count,
+        };
+      }
 
-    // Create refined message
-    refinedData.messages.push({
-      id: msg.id,
-      from_id: fromId,
-      date: date,
-      edit_date: editDate,
-      message: message,
-      out: msg.out,
-      reactions: reactions,
+      // Create refined message
+      refinedData.messages.push({
+        id: msg.id,
+        from_id: fromId,
+        date: date,
+        edit_date: editDate,
+        message: message,
+        out: msg.out,
+        reactions: reactions,
+      });
     });
   });
 
