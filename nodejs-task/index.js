@@ -12,8 +12,27 @@ const {
 } = require("@mysten/seal");
 const bech32 = require("bech32");
 
-// get body params
+// Validate required env variables
+const requiredEnv = [
+  "MOVE_PACKAGE_ID",
+  "SUI_SECRET_KEY",
+  "WALRUS_AGGREGATOR_URL",
+  "WALRUS_PUBLISHER_URL",
+  "WALRUS_EPOCHS",
+];
+for (const key of requiredEnv) {
+  if (!process.env[key]) {
+    console.error(`Missing required environment variable: ${key}`);
+    process.exit(1);
+  }
+}
+
+// Validate required CLI arguments
 const args = process.argv.slice(2);
+if (args.length < 6) {
+  console.error("Usage: node index.js <address> <blobId> <onChainFileObjId> <policyObjectId> <threshold> <enclaveId>");
+  process.exit(1);
+}
 const [
   address,
   blobId,
@@ -23,7 +42,7 @@ const [
   enclaveId,
 ] = args;
 
-//get env variables
+// Env variables
 const {
   MOVE_PACKAGE_ID,
   SUI_SECRET_KEY,
@@ -32,7 +51,7 @@ const {
   WALRUS_EPOCHS,
 } = process.env;
 
-// initialize sui client
+// Initialize Sui client and Seal client
 const suiClient = new SuiClient({ url: getFullnodeUrl("testnet") });
 const keyServers = getAllowlistedKeyServers("testnet") || [];
 const sealClient = new SealClient({
@@ -42,248 +61,232 @@ const sealClient = new SealClient({
 });
 
 // Initialize keypair from secret key
-const decoded = bech32.bech32.decode(SUI_SECRET_KEY);
-if (!decoded) {
-  throw new Error("Invalid bech32 private key format");
+let keypair;
+try {
+  const decoded = bech32.bech32.decode(SUI_SECRET_KEY);
+  if (!decoded) throw new Error("Invalid bech32 private key format");
+  const privateKeyBytes = bech32.bech32.fromWords(decoded.words);
+  const rawSecretKey = Buffer.from(privateKeyBytes).slice(1);
+  keypair = Ed25519Keypair.fromSecretKey(rawSecretKey);
+} catch (err) {
+  console.error("Failed to initialize keypair:", err);
+  process.exit(1);
 }
-const privateKeyBytes = bech32.bech32.fromWords(decoded.words);
-// Remove the first byte (flag), use only the last 32 bytes
-const rawSecretKey = Buffer.from(privateKeyBytes).slice(1);
-const keypair = Ed25519Keypair.fromSecretKey(rawSecretKey);
 
-// Fetching encrypted file from Walrus
+// --- Helper Functions ---
+
 async function fetchEncryptedFile() {
-  const walrus_url = `${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`;
-  const encryptedFile = await fetch(walrus_url, {
-    headers: { "Content-Type": "application/octet-stream" },
-    method: "GET",
-  }).then((res) => res.arrayBuffer());
-
-  if (!encryptedFile) {
-    throw new Error("Failed to fetch encrypted file");
+  try {
+    const walrus_url = `${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`;
+    const res = await fetch(walrus_url, {
+      headers: { "Content-Type": "application/octet-stream" },
+      method: "GET",
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    const encryptedFile = await res.arrayBuffer();
+    if (!encryptedFile) throw new Error("Empty response from Walrus");
+    return encryptedFile;
+  } catch (err) {
+    throw new Error(`fetchEncryptedFile failed: ${err.message}`);
   }
-
-  return encryptedFile;
 }
 
-// register attestation
 async function registerAttestation(fileObjectId) {
-  const tx = new Transaction();
-  tx.setGasBudget(10000000);
-  tx.setSender(keypair.getPublicKey().toSuiAddress());
-  tx.moveCall({
-    target: `${MOVE_PACKAGE_ID}::seal_manager::register_tee_attestation`,
-    arguments: [
-      tx.pure.vector("u8", new TextEncoder().encode(enclaveId)),
-      tx.pure.vector("u8", fromHex(fileObjectId)),
-      tx.pure.address(address),
-    ],
-  });
+  try {
+    const tx = new Transaction();
+    tx.setGasBudget(10_000_000);
+    tx.setSender(keypair.getPublicKey().toSuiAddress());
+    tx.moveCall({
+      target: `${MOVE_PACKAGE_ID}::seal_manager::register_tee_attestation`,
+      arguments: [
+        tx.pure.vector("u8", new TextEncoder().encode(enclaveId)),
+        tx.pure.vector("u8", fromHex(fileObjectId)),
+        tx.pure.address(address),
+      ],
+    });
 
-  const result = await suiClient.signAndExecuteTransaction({
-    transaction: tx,
-    signer: keypair,
-    requestType: "WaitForLocalExecution",
-    options: {
-      showEffects: true,
-    },
-  });
+    const result = await suiClient.signAndExecuteTransaction({
+      transaction: tx,
+      signer: keypair,
+      requestType: "WaitForLocalExecution",
+      options: { showEffects: true },
+    });
 
-  return result?.effects?.created[0]?.reference?.objectId;
+    const attestationObjId = result?.effects?.created[0]?.reference?.objectId;
+    if (!attestationObjId) throw new Error("No attestation object created");
+    return attestationObjId;
+  } catch (err) {
+    throw new Error(`registerAttestation failed: ${err.message}`);
+  }
 }
 
 async function decryptFile(fileObjectId, attestationObjId, encryptedFile) {
-  const sessionKey = new SessionKey({
-    address,
-    packageId: MOVE_PACKAGE_ID,
-    ttlMin: 10, // TTL of 10 minutes
-    client: suiClient,
-  });
+  try {
+    const sessionKey = new SessionKey({
+      address,
+      packageId: MOVE_PACKAGE_ID,
+      ttlMin: 10,
+      client: suiClient,
+    });
 
-  const message = sessionKey.getPersonalMessage();
-  const signature = await keypair.signPersonalMessage(Buffer.from(message));
-  await sessionKey.setPersonalMessageSignature(signature.signature);
+    const message = sessionKey.getPersonalMessage();
+    const signature = await keypair.signPersonalMessage(Buffer.from(message));
+    await sessionKey.setPersonalMessageSignature(signature.signature);
 
-  const tx = new Transaction();
-  tx.setGasBudget(10000000);
-  tx.setSender(keypair.getPublicKey().toSuiAddress());
+    const tx = new Transaction();
+    tx.setGasBudget(10_000_000);
+    tx.setSender(keypair.getPublicKey().toSuiAddress());
+    tx.moveCall({
+      target: `${MOVE_PACKAGE_ID}::seal_manager::seal_approve`,
+      arguments: [
+        tx.pure.vector("u8", fromHex(fileObjectId)),
+        tx.object(onChainFileObjId),
+        tx.object(policyObjectId),
+        tx.object(attestationObjId),
+        tx.pure.address(address),
+      ],
+    });
 
-  tx.moveCall({
-    target: `${MOVE_PACKAGE_ID}::seal_manager::seal_approve`,
-    arguments: [
-      tx.pure.vector("u8", fromHex(fileObjectId)),
-      tx.object(onChainFileObjId),
-      tx.object(policyObjectId),
-      tx.object(attestationObjId),
-      tx.pure.address(address),
-    ],
-  });
+    const txBytes = await tx.build({
+      client: suiClient,
+      onlyTransactionKind: true,
+    });
 
-  const txBytes = await tx.build({
-    client: suiClient,
-    onlyTransactionKind: true,
-  });
+    await sealClient.fetchKeys({
+      ids: [fileObjectId],
+      txBytes,
+      sessionKey,
+      threshold: Number(threshold),
+    });
 
-  // Fetch keys
-  const keys = await sealClient.fetchKeys({
-    ids: [fileObjectId],
-    txBytes,
-    sessionKey,
-    threshold: Number(threshold),
-  });
+    const decryptedBytes = await sealClient.decrypt({
+      data: new Uint8Array(encryptedFile),
+      sessionKey,
+      txBytes,
+    });
 
-  // Step 5: Decrypt the file
-  const decryptedBytes = await sealClient.decrypt({
-    data: new Uint8Array(encryptedFile),
-    sessionKey,
-    txBytes,
-  });
-
-  const decoder = new TextDecoder("utf-8");
-  const jsonString = decoder.decode(decryptedBytes);
-  const jsonObject = JSON.parse(jsonString);
-  return jsonObject;
+    const decoder = new TextDecoder("utf-8");
+    const jsonString = decoder.decode(decryptedBytes);
+    return JSON.parse(jsonString);
+  } catch (err) {
+    throw new Error(`decryptFile failed: ${err.message}`);
+  }
 }
 
-// Simple task 3: Process some data
 function processData(rawData) {
-  // Initialize refined structure
   const refinedData = {
     revision: rawData.revision,
     user: rawData.user,
     messages: [],
   };
 
-  // For imputing fromId, assume alternating users
-  const users = [rawData.user, rawData.chats[0].chat_id];
-  let lastUserIndex = 0;
-
-  // Process all chats
-  rawData.chats.forEach((chat) => {
-    chat.contents.forEach((msg) => {
-      // Convert timestamp to ISO 8601
-      const date = new Date(msg.date * 1000).toISOString();
-      const editDate = msg.editDate
-        ? new Date(msg.editDate * 1000).toISOString()
-        : null;
-
-      // Impute missing fromId (alternate between users)
-      const fromId = msg.fromId ? msg.fromId.userId : users[lastUserIndex];
-      lastUserIndex = (lastUserIndex + 1) % 2;
-
-      // Clean message text (basic typo correction)
-      let message = msg.message;
-      if (message === "listner workign?") {
-        message = "listener working?";
+  if (rawData.chats && Array.isArray(rawData.chats)) {
+    rawData.chats.forEach(chat => {
+      if (chat.contents && Array.isArray(chat.contents)) {
+        chat.contents.forEach(msg => {
+          refinedData.messages.push({
+            id: msg.id,
+            from_id: msg.fromId?.userId || null,
+            date: msg.date ? new Date(msg.date * 1000).toISOString() : null,
+            edit_date: msg.editDate ? new Date(msg.editDate * 1000).toISOString() : null,
+            message: msg.message,
+            out: msg.out,
+            reactions: msg.reactions
+              ? {
+                  emoji: msg.reactions.recentReactions?.[0]?.reaction?.emoticon || null,
+                  count: msg.reactions.results?.[0]?.count || null,
+                }
+              : null,
+          });
+        });
       }
-
-      // Simplify reactions
-      let reactions = null;
-      if (msg.reactions) {
-        reactions = {
-          emoji: msg.reactions.recentReactions[0].reaction.emoticon,
-          count: msg.reactions.results[0].count,
-        };
-      }
-
-      // Create refined message
-      refinedData.messages.push({
-        id: msg.id,
-        from_id: fromId,
-        date: date,
-        edit_date: editDate,
-        message: message,
-        out: msg.out,
-        reactions: reactions,
-      });
     });
-  });
-
-  // Sort messages by date
-  refinedData.messages.sort((a, b) => new Date(a.date) - new Date(b.date));
+    // Optional: sort by date if you want
+    refinedData.messages.sort((a, b) => new Date(a.date) - new Date(b.date));
+  }
 
   return refinedData;
 }
 
 async function encryptFile(refinedData) {
-  const policyObjectBytes = fromHex(policyObjectId);
-  const nonce = crypto.getRandomValues(new Uint8Array(5));
-  const id = toHex(new Uint8Array([...policyObjectBytes, ...nonce]));
-  const { encryptedObject: encryptedBytes } = await sealClient.encrypt({
-    threshold: 2,
-    packageId: MOVE_PACKAGE_ID,
-    id,
-    data: new Uint8Array(new TextEncoder().encode(JSON.stringify(refinedData))),
-  });
-
-  return encryptedBytes;
+  try {
+    const policyObjectBytes = fromHex(policyObjectId);
+    const nonce = crypto.getRandomValues(new Uint8Array(5));
+    const id = toHex(new Uint8Array([...policyObjectBytes, ...nonce]));
+    const { encryptedObject: encryptedBytes } = await sealClient.encrypt({
+      threshold: 2,
+      packageId: MOVE_PACKAGE_ID,
+      id,
+      data: new Uint8Array(new TextEncoder().encode(JSON.stringify(refinedData))),
+    });
+    return encryptedBytes;
+  } catch (err) {
+    throw new Error(`encryptFile failed: ${err.message}`);
+  }
 }
 
 async function publishFile(encryptedData) {
-  const uploadUrl = `${WALRUS_PUBLISHER_URL}/v1/blobs?epochs=${WALRUS_EPOCHS}`;
-
-  const response = await fetch(uploadUrl, {
-    method: "PUT",
-    body: encryptedData,
-    headers: {
-      "Content-Type": "application/octet-stream",
-    },
-  });
-
-  const data = await response.json();
-
-  let blobId;
-  if (data.newlyCreated) {
-    blobId = data.newlyCreated.blobObject.blobId;
-  } else if (data.alreadyCertified) {
-    blobId = data.alreadyCertified.blobId;
-  } else {
-    throw new Error("Invalid response format from Walrus");
+  try {
+    const uploadUrl = `${WALRUS_PUBLISHER_URL}/v1/blobs?epochs=${WALRUS_EPOCHS}`;
+    const response = await fetch(uploadUrl, {
+      method: "PUT",
+      body: encryptedData,
+      headers: { "Content-Type": "application/octet-stream" },
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    const data = await response.json();
+    let blobId;
+    if (data.newlyCreated) {
+      blobId = data.newlyCreated.blobObject.blobId;
+    } else if (data.alreadyCertified) {
+      blobId = data.alreadyCertified.blobId;
+    } else {
+      throw new Error("Invalid response format from Walrus");
+    }
+    const metadata = {
+      walrusUrl: `${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`,
+      size: data.newlyCreated?.blobObject?.size || 0,
+      storageSize: data.newlyCreated?.blobObject?.storage?.storageSize || 0,
+      blobId,
+    };
+    return metadata;
+  } catch (err) {
+    throw new Error(`publishFile failed: ${err.message}`);
   }
-
-  const metadata = {
-    walrusUrl: `${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`,
-    size: data.newlyCreated?.blobObject?.size || 0,
-    storageSize: data.newlyCreated?.blobObject?.storage?.storageSize || 0,
-    blobId: blobId
-  };
-
-  // Return the URL to access the blob
-  return metadata;
 }
 
 async function saveEncryptedFileOnChain(encryptedRefinedData, metadata, policyObjId) {
-  const encryptedData = new Uint8Array(encryptedRefinedData);
-  const encryptedObject = EncryptedObject.parse(encryptedData);
-  const tx = new Transaction();
-  tx.setGasBudget(10000000);
-
-  const metadataBytes = new Uint8Array(
-    new TextEncoder().encode(JSON.stringify(metadata))
-  );
-
-  tx.moveCall({
-    target: `${MOVE_PACKAGE_ID}::seal_manager::save_encrypted_file`,
-    arguments: [
-      tx.pure.vector("u8", fromHex(encryptedObject.id)),
-      tx.object(policyObjId),
-      tx.pure.vector("u8", metadataBytes),
-    ],
-  });
-
-  const result = await suiClient.signAndExecuteTransaction({
-    transaction: tx,
-    signer: keypair,
-    requestType: "WaitForLocalExecution",
-    options: {
-      showEffects: true,
-    },
-  });
-
-  return result?.effects?.created[0]?.reference?.objectId;
+  try {
+    const encryptedData = new Uint8Array(encryptedRefinedData);
+    const encryptedObject = EncryptedObject.parse(encryptedData);
+    const tx = new Transaction();
+    tx.setGasBudget(10_000_000);
+    const metadataBytes = new Uint8Array(
+      new TextEncoder().encode(JSON.stringify(metadata))
+    );
+    tx.moveCall({
+      target: `${MOVE_PACKAGE_ID}::seal_manager::save_encrypted_file`,
+      arguments: [
+        tx.pure.vector("u8", fromHex(encryptedObject.id)),
+        tx.object(policyObjId),
+        tx.pure.vector("u8", metadataBytes),
+      ],
+    });
+    const result = await suiClient.signAndExecuteTransaction({
+      transaction: tx,
+      signer: keypair,
+      requestType: "WaitForLocalExecution",
+      options: { showEffects: true },
+    });
+    const objId = result?.effects?.created[0]?.reference?.objectId;
+    if (!objId) throw new Error("No on-chain file object created");
+    return objId;
+  } catch (err) {
+    throw new Error(`saveEncryptedFileOnChain failed: ${err.message}`);
+  }
 }
 
-// Main function to run all tasks
+// --- Main Task Runner ---
 async function runTasks() {
   try {
     const encryptedFile = await fetchEncryptedFile();
@@ -295,23 +298,25 @@ async function runTasks() {
       attestationObjId,
       encryptedFile
     );
-
     const refinedData = processData(decryptedFile);
     const encryptedRefinedData = await encryptFile(refinedData);
     const metadata = await publishFile(encryptedRefinedData);
-
     const onChainFileObjId = await saveEncryptedFileOnChain(
       encryptedRefinedData,
       metadata,
       policyObjectId
     );
-
     console.log(
-      JSON.stringify({ walrusUrl: metadata.walrusUrl, attestationObjId, onChainFileObjId, blobId: metadata.blobId })
+      JSON.stringify({
+        walrusUrl: metadata.walrusUrl,
+        attestationObjId,
+        onChainFileObjId,
+        blobId: metadata.blobId,
+      })
     );
     process.exit(0);
   } catch (error) {
-    console.error("💥 Task failed:", error.message);
+    console.error("💥 Task failed:", error.stack || error.message);
     process.exit(1);
   }
 }
@@ -321,7 +326,6 @@ process.on("SIGINT", () => {
   console.log("\n🛑 Received SIGINT, shutting down gracefully...");
   process.exit(0);
 });
-
 process.on("SIGTERM", () => {
   console.log("\n🛑 Received SIGTERM, shutting down gracefully...");
   process.exit(0);
