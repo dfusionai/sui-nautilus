@@ -24,7 +24,15 @@ FROM stagex/linux-nitro@sha256:073c4603686e3bdc0ed6755fee3203f6f6f1512e0ded09eae
 FROM stagex/user-cpio@sha256:2695e1b42f93ec3ea0545e270f0fda4adca3cb48d0526da01954efae1bce95c4 AS user-cpio
 FROM stagex/user-socat:local@sha256:acef3dacc5b805d0eaaae0c2d13f567bf168620aea98c8d3e60ea5fd4e8c3108 AS user-socat
 FROM stagex/user-jq@sha256:ced6213c21b570dde1077ef49966b64cbf83890859eff83f33c82620520b563e AS user-jq
-FROM node:18.20.0-alpine AS node-source
+
+# Use distroless Node.js that's already statically compiled with musl
+FROM astefanutti/scratch-node:18.10.0 AS static-node
+
+# Build nodejs-task dependencies
+FROM node:18.20.0-alpine AS nodejs-deps
+COPY src/nautilus-server/src/nodejs-task /nodejs-task
+WORKDIR /nodejs-task
+RUN npm ci --production
 
 FROM scratch as base
 ENV TARGET=x86_64-unknown-linux-musl
@@ -52,17 +60,6 @@ COPY --from=user-linux-nitro /bzImage .
 COPY --from=user-linux-nitro /nsm.ko .
 COPY --from=user-linux-nitro /linux.config .
 
-# Add Node.js installation stage
-FROM base AS nodejs-build
-WORKDIR /nodejs-build
-COPY --from=node-source /usr/local nodejs
-
-# Build nodejs-task dependencies
-FROM node-source AS nodejs-deps
-COPY src/nautilus-server/src/nodejs-task /nodejs-task
-WORKDIR /nodejs-task
-RUN npm ci --production
-
 FROM base as build
 COPY . .
 
@@ -88,8 +85,12 @@ RUN cp /src/nautilus-server/target/${TARGET}/release/nautilus-server initramfs
 RUN cp /src/nautilus-server/traffic_forwarder.py initramfs/
 RUN cp /src/nautilus-server/run.sh initramfs/
 RUN cp /src/nautilus-server/allowed_endpoints.yaml initramfs/
-COPY --from=nodejs-build /nodejs-build/nodejs initramfs/nodejs
+# Copy static Node.js binary and application
+RUN mkdir -p initramfs/nodejs/bin
+COPY --from=static-node /bin/node initramfs/nodejs/bin/node
 COPY --from=nodejs-deps /nodejs-task initramfs/nodejs-task
+# Ensure the node binary is executable
+RUN chmod +x initramfs/nodejs/bin/node
 
 RUN <<-EOF
     set -eux

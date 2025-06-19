@@ -51,6 +51,7 @@ impl NodeTaskRunner {
         let start_time = std::time::Instant::now();
         
         self.validate_task_directory()?;
+        self.validate_node_installation().await?;
         
         let timeout_duration = std::time::Duration::from_secs(self.timeout_secs);
         
@@ -86,8 +87,33 @@ impl NodeTaskRunner {
         Ok(())
     }
 
+    async fn validate_node_installation(&self) -> Result<()> {
+        let node_path = "/nodejs/bin/node";
+        
+        // Check if the static Node.js binary exists
+        if !std::path::Path::new(node_path).exists() {
+            anyhow::bail!("Static Node.js binary not found at {}", node_path);
+        }
+
+        // Test Node.js binary by running --version
+        let output = TokioCommand::new(node_path)
+            .arg("--version")
+            .output()
+            .await
+            .context("Failed to check Node.js version")?;
+
+        if output.status.success() {
+            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            tracing::debug!("Static Node.js version: {}", version);
+            Ok(())
+        } else {
+            let error = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Node.js binary failed to run: {}", error)
+        }
+    }
+
     async fn execute_task(&self) -> Result<TaskOutput> {
-        // Use the Node.js binary from the specific path in container
+        // Use the static Node.js binary from the new path in container
         let node_path = "/nodejs/bin/node";
         let mut cmd = TokioCommand::new(node_path);
         cmd.arg("index.js")
