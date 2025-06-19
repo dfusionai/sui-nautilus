@@ -13,19 +13,19 @@ const {
 const bech32 = require("bech32");
 
 // Validate required env variables
-const requiredEnv = [
-  "MOVE_PACKAGE_ID",
-  "SUI_SECRET_KEY",
-  "WALRUS_AGGREGATOR_URL",
-  "WALRUS_PUBLISHER_URL",
-  "WALRUS_EPOCHS",
-];
-for (const key of requiredEnv) {
-  if (!process.env[key]) {
-    console.error(`Missing required environment variable: ${key}`);
-    process.exit(1);
-  }
-}
+// const requiredEnv = [
+//   "MOVE_PACKAGE_ID",
+//   "SUI_SECRET_KEY",
+//   "WALRUS_AGGREGATOR_URL",
+//   "WALRUS_PUBLISHER_URL",
+//   "WALRUS_EPOCHS",
+// ];
+// for (const key of requiredEnv) {
+//   if (!process.env[key]) {
+//     console.error(`Missing required environment variable: ${key}`);
+//     process.exit(1);
+//   }
+// }
 
 // Validate required CLI arguments
 const args = process.argv.slice(2);
@@ -43,13 +43,11 @@ const [
 ] = args;
 
 // Env variables
-const {
-  MOVE_PACKAGE_ID,
-  SUI_SECRET_KEY,
-  WALRUS_AGGREGATOR_URL,
-  WALRUS_PUBLISHER_URL,
-  WALRUS_EPOCHS,
-} = process.env;
+const  MOVE_PACKAGE_ID = process.env.MOVE_PACKAGE_ID || "0xf2433262bd55b30c1cddbae940a2355086cfe2850bd62583bdfcad7c57b17956";
+const  SUI_SECRET_KEY = process.env.SUI_SECRET_KEY || "suiprivkey1qzzw98cfk6mcwh0yr8gkw8qa9vncj6ahml2s32tq5e3kqw6ta5uzc73ql6c";
+const  WALRUS_AGGREGATOR_URL = process.env.WALRUS_AGGREGATOR_URL || "https://aggregator.walrus-testnet.walrus.space/";
+const  WALRUS_PUBLISHER_URL = process.env.WALRUS_PUBLISHER_URL || "https://publisher.walrus-testnet.walrus.space/";
+const  WALRUS_EPOCHS = process.env.WALRUS_EPOCHS || 5;
 
 // Initialize Sui client and Seal client
 const suiClient = new SuiClient({ url: getFullnodeUrl("testnet") });
