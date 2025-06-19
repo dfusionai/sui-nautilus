@@ -51,6 +51,21 @@ COPY --from=user-linux-nitro /bzImage .
 COPY --from=user-linux-nitro /nsm.ko .
 COPY --from=user-linux-nitro /linux.config .
 
+# Add Node.js installation stage
+FROM base AS nodejs-build
+WORKDIR /nodejs-build
+RUN wget -O node.tar.xz https://nodejs.org/dist/v18.20.0/node-v18.20.0-linux-x64.tar.xz \
+    && tar -xf node.tar.xz \
+    && mv node-v18.20.0-linux-x64 nodejs
+
+# Build nodejs-task dependencies
+FROM base AS nodejs-deps
+COPY --from=nodejs-build /nodejs-build/nodejs /nodejs
+ENV PATH="/nodejs/bin:$PATH"
+COPY src/nautilus-server/src/nodejs-task /nodejs-task
+WORKDIR /nodejs-task
+RUN npm ci --production
+
 FROM base as build
 COPY . .
 
@@ -76,6 +91,8 @@ RUN cp /src/nautilus-server/target/${TARGET}/release/nautilus-server initramfs
 RUN cp /src/nautilus-server/traffic_forwarder.py initramfs/
 RUN cp /src/nautilus-server/run.sh initramfs/
 RUN cp /src/nautilus-server/allowed_endpoints.yaml initramfs/
+COPY --from=nodejs-build /nodejs-build/nodejs initramfs/nodejs
+COPY --from=nodejs-deps /nodejs-task initramfs/nodejs-task
 
 RUN <<-EOF
     set -eux

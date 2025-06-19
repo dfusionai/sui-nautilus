@@ -11,6 +11,7 @@ out/enclaveos.tar: out \
 		src/init \
 		src/aws \
         src/hello \
+        src/nautilus-server \
 	)
 	docker build \
 		--tag $(REGISTRY)/enclaveos \
@@ -19,6 +20,8 @@ out/enclaveos.tar: out \
 		--output type=local,rewrite-timestamp=true,dest=out\
 		-f Containerfile \
 		.
+
+out/nitro.eif: out/enclaveos.tar
 
 .PHONY: run
 run: out/nitro.eif

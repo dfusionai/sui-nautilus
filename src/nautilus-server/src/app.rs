@@ -60,8 +60,7 @@ pub async fn process_data(
     
     // Get the absolute path to nodejs-task
     let current_dir = std::env::current_dir().unwrap();
-    let root_dir = current_dir.parent().unwrap().parent().unwrap();
-    let task_path = root_dir.join("nodejs-task").to_string_lossy().into_owned();
+    let task_path = current_dir.join("nodejs-task").to_string_lossy().into_owned();
     
     // Configure task runner
     let task_config = TaskConfig {

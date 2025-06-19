@@ -87,7 +87,9 @@ impl NodeTaskRunner {
     }
 
     async fn execute_task(&self) -> Result<TaskOutput> {
-        let mut cmd = TokioCommand::new("node");
+        // Use the Node.js binary from the specific path in container
+        let node_path = "/nodejs/bin/node";
+        let mut cmd = TokioCommand::new(node_path);
         cmd.arg("index.js")
            .current_dir(&self.task_path)
            .stdout(Stdio::piped())
