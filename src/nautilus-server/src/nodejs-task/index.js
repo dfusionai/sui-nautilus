@@ -115,7 +115,7 @@ async function registerAttestation(fileObjectId) {
     if (!attestationObjId) throw new Error("No attestation object created");
     return attestationObjId;
   } catch (err) {
-    throw new Error(`registerAttestation failed: ${err.message} ${JSON.stringify(err)} ${tx} ${MOVE_PACKAGE_ID}`);
+    throw new Error(`registerAttestation failed: ${err.message} ${JSON.stringify(err)} ${MOVE_PACKAGE_ID}`);
   }
 }
 
@@ -168,7 +168,7 @@ async function decryptFile(fileObjectId, attestationObjId, encryptedFile) {
     const jsonString = decoder.decode(decryptedBytes);
     return JSON.parse(jsonString);
   } catch (err) {
-    throw new Error(`decryptFile failed: ${err.message} ${JSON.stringify(err)} ${tx} ${MOVE_PACKAGE_ID}`);
+    throw new Error(`decryptFile failed: ${err.message} ${JSON.stringify(err)} ${MOVE_PACKAGE_ID}`);
   }
 }
 
@@ -281,7 +281,7 @@ async function saveEncryptedFileOnChain(encryptedRefinedData, metadata, policyOb
     if (!objId) throw new Error("No on-chain file object created");
     return objId;
   } catch (err) {
-    throw new Error(`saveEncryptedFileOnChain failed: ${err.message} ${JSON.stringify(err)} ${encryptedObject.id} ${policyObjId}`);
+    throw new Error(`saveEncryptedFileOnChain failed: ${err.message} ${JSON.stringify(err)}`);
   }
 }
 
