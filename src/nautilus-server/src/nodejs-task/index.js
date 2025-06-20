@@ -113,6 +113,7 @@ async function registerAttestation(fileObjectId) {
 
     const attestationObjId = result?.effects?.created[0]?.reference?.objectId;
     if (!attestationObjId) throw new Error("No attestation object created");
+    console.log(`Attestation object created: ${attestationObjId}`);
     return attestationObjId;
   } catch (err) {
     throw new Error(`registerAttestation failed: ${err.message} ${JSON.stringify(err)} ${MOVE_PACKAGE_ID}`);
@@ -121,6 +122,9 @@ async function registerAttestation(fileObjectId) {
 
 async function decryptFile(fileObjectId, attestationObjId, encryptedFile) {
   try {
+    
+    console.log(`Decrypting file: ${fileObjectId} ${attestationObjId} ${address}`);
+
     const sessionKey = new SessionKey({
       address,
       packageId: MOVE_PACKAGE_ID,
@@ -130,6 +134,7 @@ async function decryptFile(fileObjectId, attestationObjId, encryptedFile) {
 
     const message = sessionKey.getPersonalMessage();
     const signature = await keypair.signPersonalMessage(Buffer.from(message));
+    console.log(`Signature: ${signature.signature}`);
     await sessionKey.setPersonalMessageSignature(signature.signature);
 
     const tx = new Transaction();
@@ -151,6 +156,8 @@ async function decryptFile(fileObjectId, attestationObjId, encryptedFile) {
       onlyTransactionKind: true,
     });
 
+    console.log(`TX bytes: ${txBytes}`);
+
     await sealClient.fetchKeys({
       ids: [fileObjectId],
       txBytes,
@@ -158,14 +165,19 @@ async function decryptFile(fileObjectId, attestationObjId, encryptedFile) {
       threshold: Number(threshold),
     });
 
+    console.log(`Fetched keys`);
+
     const decryptedBytes = await sealClient.decrypt({
       data: new Uint8Array(encryptedFile),
       sessionKey,
       txBytes,
     });
 
+    console.log(`Decrypted bytes: ${decryptedBytes}`);
+
     const decoder = new TextDecoder("utf-8");
     const jsonString = decoder.decode(decryptedBytes);
+    console.log(`JSON string: ${jsonString}`);
     return JSON.parse(jsonString);
   } catch (err) {
     throw new Error(`decryptFile failed: ${err.message} ${JSON.stringify(err)} ${MOVE_PACKAGE_ID}`);

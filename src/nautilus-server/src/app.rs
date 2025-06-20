@@ -26,7 +26,7 @@ use crate::common::{health_check};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TaskResponse {
     pub status: String,
-    pub data: Option<ProcessedData>,
+    pub data: String,
     pub stderr: String,
     pub exit_code: i32,
     pub execution_time_ms: u64,
@@ -81,21 +81,21 @@ pub async fn process_data(
     })?;
 
     // If task failed, return error
-    if task_output.exit_code != 0 {
-        return Err(EnclaveError::GenericError(format!(
-            "Task failed with exit code {}: {}",
-            task_output.exit_code,
-            task_output.stderr
-        )));
-    }
+    // if task_output.exit_code != 0 {
+    //     return Err(EnclaveError::GenericError(format!(
+    //         "Task failed with exit code {}: {}",
+    //         task_output.exit_code,
+    //         task_output.stderr
+    //     )));
+    // }
 
-    // Parse the stdout JSON
-    let data = serde_json::from_str::<ProcessedData>(&task_output.stdout)
-        .map_err(|e| EnclaveError::GenericError(format!("Failed to parse task output: {}", e)))?;
+    // // Parse the stdout JSON
+    // let data = serde_json::from_str::<ProcessedData>(&task_output.stdout)
+    //     .map_err(|e| EnclaveError::GenericError(format!("Failed to parse task output: {}", e)))?;
 
     Ok(Json(TaskResponse {
         status: "success".to_string(),
-        data: Some(data),
+        data: task_output.stdout,
         stderr: task_output.stderr,
         exit_code: task_output.exit_code,
         execution_time_ms: task_output.execution_time_ms,
