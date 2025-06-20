@@ -80,6 +80,7 @@ async function fetchEncryptedFile() {
       headers: { "Content-Type": "application/octet-stream" },
       method: "GET",
     });
+    console.log(`Fetching encrypted file from ${walrus_url}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     const encryptedFile = await res.arrayBuffer();
     if (!encryptedFile) throw new Error("Empty response from Walrus");
