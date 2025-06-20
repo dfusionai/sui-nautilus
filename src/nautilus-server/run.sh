@@ -26,6 +26,9 @@ echo "127.0.0.64   aggregator.walrus-testnet.walrus.space" >> /etc/hosts
 echo "127.0.0.65   publisher.walrus-testnet.walrus.space" >> /etc/hosts
 echo "127.0.0.66   fullnode.mainnet.sui.io" >> /etc/hosts
 echo "127.0.0.67   fullnode.testnet.sui.io" >> /etc/hosts
+echo "127.0.0.68   seal-key-server-testnet-1.mystenlabs.com" >> /etc/hosts
+echo "127.0.0.69   seal-key-server-testnet-2.mystenlabs.com" >> /etc/hosts
+
 
 
 
@@ -51,6 +54,9 @@ python3 /traffic_forwarder.py 127.0.0.64 443 3 8101 &
 python3 /traffic_forwarder.py 127.0.0.65 443 3 8102 &
 python3 /traffic_forwarder.py 127.0.0.66 443 3 8103 &
 python3 /traffic_forwarder.py 127.0.0.67 443 3 8104 &
+python3 /traffic_forwarder.py 127.0.0.68 443 3 8105 &
+python3 /traffic_forwarder.py 127.0.0.69 443 3 8106 &
+
 
 
 

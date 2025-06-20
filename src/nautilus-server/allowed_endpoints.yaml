@@ -4,3 +4,5 @@ endpoints:
   - publisher.walrus-testnet.walrus.space
   - fullnode.mainnet.sui.io
   - fullnode.testnet.sui.io
+  - seal-key-server-testnet-1.mystenlabs.com
+  - seal-key-server-testnet-2.mystenlabs.com
