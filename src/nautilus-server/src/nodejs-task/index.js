@@ -80,7 +80,7 @@ async function fetchEncryptedFile() {
       headers: { "Content-Type": "application/octet-stream" },
       method: "GET",
     });
-    console.log(`Fetching encrypted file from ${walrus_url}`);
+    console.log(`1. Fetching encrypted file from ${walrus_url}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     const encryptedFile = await res.arrayBuffer();
     if (!encryptedFile) throw new Error("Empty response from Walrus");
@@ -113,7 +113,7 @@ async function registerAttestation(fileObjectId) {
 
     const attestationObjId = result?.effects?.created[0]?.reference?.objectId;
     if (!attestationObjId) throw new Error("No attestation object created");
-    console.log(`Attestation object created: ${attestationObjId}`);
+    console.log(`2. Attestation object created: ${attestationObjId}`);
     return attestationObjId;
   } catch (err) {
     throw new Error(`registerAttestation failed: ${err.message} ${JSON.stringify(err)} ${MOVE_PACKAGE_ID}`);
@@ -123,7 +123,7 @@ async function registerAttestation(fileObjectId) {
 async function decryptFile(fileObjectId, attestationObjId, encryptedFile) {
   try {
     
-    console.log(`Decrypting file: ${fileObjectId} ${attestationObjId} ${address}`);
+    console.log(`3. Decrypting file: fileObjectId: ${fileObjectId} attestationObjId: ${attestationObjId} address: ${address}`);
 
     const sessionKey = new SessionKey({
       address,
@@ -136,6 +136,8 @@ async function decryptFile(fileObjectId, attestationObjId, encryptedFile) {
     const signature = await keypair.signPersonalMessage(Buffer.from(message));
     console.log(`Signature: ${signature.signature}`);
     await sessionKey.setPersonalMessageSignature(signature.signature);
+
+    console.log(`4. Initializing transaction: fileObjectId: ${fileObjectId} onChainFileObjId: ${onChainFileObjId} policyObjectId: ${policyObjectId} attestationObjId: ${attestationObjId} address: ${address}`);
 
     const tx = new Transaction();
     tx.setGasBudget(10_000_000);
@@ -151,12 +153,14 @@ async function decryptFile(fileObjectId, attestationObjId, encryptedFile) {
       ],
     });
 
+    console.log(`5. Building transaction`);
+
     const txBytes = await tx.build({
       client: suiClient,
       onlyTransactionKind: true,
     });
 
-    console.log(`TX bytes: ${txBytes}`);
+    console.log(`6. TX bytes: ${txBytes}`);
 
     await sealClient.fetchKeys({
       ids: [fileObjectId],
@@ -165,7 +169,7 @@ async function decryptFile(fileObjectId, attestationObjId, encryptedFile) {
       threshold: Number(threshold),
     });
 
-    console.log(`Fetched keys`);
+    console.log(`7. Fetched keys`);
 
     const decryptedBytes = await sealClient.decrypt({
       data: new Uint8Array(encryptedFile),
@@ -173,11 +177,11 @@ async function decryptFile(fileObjectId, attestationObjId, encryptedFile) {
       txBytes,
     });
 
-    console.log(`Decrypted bytes: ${decryptedBytes}`);
+    console.log(`8. Decrypted bytes: ${decryptedBytes}`);
 
     const decoder = new TextDecoder("utf-8");
     const jsonString = decoder.decode(decryptedBytes);
-    console.log(`JSON string: ${jsonString}`);
+    console.log(`9. JSON string: ${jsonString}`);
     return JSON.parse(jsonString);
   } catch (err) {
     throw new Error(`decryptFile failed: ${err.message} ${JSON.stringify(err)} ${MOVE_PACKAGE_ID}`);
@@ -190,6 +194,8 @@ function processData(rawData) {
     user: rawData.user,
     messages: [],
   };
+
+  console.log(`10. Processing data: ${rawData}`);
 
   if (rawData.chats && Array.isArray(rawData.chats)) {
     rawData.chats.forEach(chat => {
@@ -216,20 +222,27 @@ function processData(rawData) {
     refinedData.messages.sort((a, b) => new Date(a.date) - new Date(b.date));
   }
 
+  console.log(`11. Refined data: ${refinedData}`);
+
   return refinedData;
 }
 
 async function encryptFile(refinedData) {
   try {
+    console.log(`12. Encrypting file: policyObjectId: ${policyObjectId}`);
     const policyObjectBytes = fromHex(policyObjectId);
     const nonce = crypto.getRandomValues(new Uint8Array(5));
     const id = toHex(new Uint8Array([...policyObjectBytes, ...nonce]));
+
+    console.log(`13. Encrypting file: id: ${id}`);
     const { encryptedObject: encryptedBytes } = await sealClient.encrypt({
       threshold: 2,
       packageId: MOVE_PACKAGE_ID,
       id,
       data: new Uint8Array(new TextEncoder().encode(JSON.stringify(refinedData))),
     });
+
+    console.log(`14. Encrypted bytes: ${encryptedBytes}`);
     return encryptedBytes;
   } catch (err) {
     throw new Error(`encryptFile failed: ${err.message} ${JSON.stringify(err)} ${MOVE_PACKAGE_ID}`);
@@ -239,6 +252,9 @@ async function encryptFile(refinedData) {
 async function publishFile(encryptedData) {
   try {
     const uploadUrl = `${WALRUS_PUBLISHER_URL}/v1/blobs?epochs=${WALRUS_EPOCHS}`;
+
+    console.log(`15. Publishing file: uploadUrl: ${uploadUrl}`);
+
     const response = await fetch(uploadUrl, {
       method: "PUT",
       body: encryptedData,
@@ -254,12 +270,16 @@ async function publishFile(encryptedData) {
     } else {
       throw new Error("Invalid response format from Walrus");
     }
+    
     const metadata = {
       walrusUrl: `${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`,
       size: data.newlyCreated?.blobObject?.size || 0,
       storageSize: data.newlyCreated?.blobObject?.storage?.storageSize || 0,
       blobId,
     };
+
+    console.log(`16. Metadata: ${metadata}`);
+
     return metadata;
   } catch (err) {
     throw new Error(`publishFile failed: ${err.message} ${JSON.stringify(err)} ${uploadUrl}`);
@@ -268,8 +288,11 @@ async function publishFile(encryptedData) {
 
 async function saveEncryptedFileOnChain(encryptedRefinedData, metadata, policyObjId) {
   try {
+    console.log(`17. Saving encrypted file on chain: encryptedRefinedData: ${encryptedRefinedData} metadata: ${metadata} policyObjId: ${policyObjId}`);
     const encryptedData = new Uint8Array(encryptedRefinedData);
     const encryptedObject = EncryptedObject.parse(encryptedData);
+
+    console.log(`18. Building transaction`);
     const tx = new Transaction();
     tx.setGasBudget(10_000_000);
     const metadataBytes = new Uint8Array(
@@ -283,14 +306,19 @@ async function saveEncryptedFileOnChain(encryptedRefinedData, metadata, policyOb
         tx.pure.vector("u8", metadataBytes),
       ],
     });
+
+    console.log(`19. Signing and executing transaction`);
     const result = await suiClient.signAndExecuteTransaction({
       transaction: tx,
       signer: keypair,
       requestType: "WaitForLocalExecution",
       options: { showEffects: true },
     });
+
     const objId = result?.effects?.created[0]?.reference?.objectId;
     if (!objId) throw new Error("No on-chain file object created");
+    console.log(`20. On-chain file object created: ${objId}`);
+    
     return objId;
   } catch (err) {
     throw new Error(`saveEncryptedFileOnChain failed: ${err.message} ${JSON.stringify(err)}`);
