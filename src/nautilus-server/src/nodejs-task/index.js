@@ -86,7 +86,7 @@ async function fetchEncryptedFile() {
     if (!encryptedFile) throw new Error("Empty response from Walrus");
     return encryptedFile;
   } catch (err) {
-    throw new Error(`fetchEncryptedFile failed: ${err.message}`);
+    throw new Error(`fetchEncryptedFile failed: ${err.message} ${JSON.stringify(err)}`);
   }
 }
 
