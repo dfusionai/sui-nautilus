@@ -74,8 +74,8 @@ try {
 // --- Helper Functions ---
 
 async function fetchEncryptedFile() {
+  const walrus_url = `${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`;
   try {
-    const walrus_url = `${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`;
     const res = await fetch(walrus_url, {
       headers: { "Content-Type": "application/octet-stream" },
       method: "GET",
