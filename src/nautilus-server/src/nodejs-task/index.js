@@ -45,8 +45,8 @@ const [
 // Env variables
 const  MOVE_PACKAGE_ID = process.env.MOVE_PACKAGE_ID || "0xf2433262bd55b30c1cddbae940a2355086cfe2850bd62583bdfcad7c57b17956";
 const  SUI_SECRET_KEY = process.env.SUI_SECRET_KEY || "suiprivkey1qzzw98cfk6mcwh0yr8gkw8qa9vncj6ahml2s32tq5e3kqw6ta5uzc73ql6c";
-const  WALRUS_AGGREGATOR_URL = process.env.WALRUS_AGGREGATOR_URL || "https://aggregator.walrus-testnet.walrus.space/";
-const  WALRUS_PUBLISHER_URL = process.env.WALRUS_PUBLISHER_URL || "https://publisher.walrus-testnet.walrus.space/";
+const  WALRUS_AGGREGATOR_URL = process.env.WALRUS_AGGREGATOR_URL || "https://aggregator.walrus-testnet.walrus.space";
+const  WALRUS_PUBLISHER_URL = process.env.WALRUS_PUBLISHER_URL || "https://publisher.walrus-testnet.walrus.space";
 const  WALRUS_EPOCHS = process.env.WALRUS_EPOCHS || 5;
 
 // Initialize Sui client and Seal client
