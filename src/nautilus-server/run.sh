@@ -22,7 +22,9 @@ busybox ip link set dev lo up
 
 # Add a hosts record, pointing target site calls to local loopback
 echo "127.0.0.1   localhost" > /etc/hosts
-echo "127.0.0.64   api.weatherapi.com" >> /etc/hosts
+echo "127.0.0.64   aggregator.walrus-testnet.walrus.space" >> /etc/hosts
+echo "127.0.0.65   publisher.walrus-testnet.walrus.space" >> /etc/hosts
+
 
 
 
@@ -44,6 +46,8 @@ echo "$JSON_RESPONSE" | jq -r 'to_entries[] | "\(.key)=\(.value)"' > /tmp/kvpair
 # == ATTENTION: code should be generated here that added all hosts to forward traffic ===
 # Traffic-forwarder-block
 python3 /traffic_forwarder.py 127.0.0.64 443 3 8101 &
+python3 /traffic_forwarder.py 127.0.0.65 443 3 8102 &
+
 
 
 # Listens on Local VSOCK Port 3000 and forwards to localhost 3000
