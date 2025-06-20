@@ -2,4 +2,5 @@
 endpoints:
   - aggregator.walrus-testnet.walrus.space
   - publisher.walrus-testnet.walrus.space
-  # - api.weatherapi.com # replace with your own endpoints
+  - fullnode.mainnet.sui.io
+  - fullnode.testnet.sui.io
