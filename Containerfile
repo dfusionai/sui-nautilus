@@ -25,11 +25,11 @@ FROM stagex/user-cpio@sha256:2695e1b42f93ec3ea0545e270f0fda4adca3cb48d0526da0195
 FROM stagex/user-socat:local@sha256:acef3dacc5b805d0eaaae0c2d13f567bf168620aea98c8d3e60ea5fd4e8c3108 AS user-socat
 FROM stagex/user-jq@sha256:ced6213c21b570dde1077ef49966b64cbf83890859eff83f33c82620520b563e AS user-jq
 
-# Use distroless Node.js that's statically compiled with musl
-FROM astefanutti/scratch-node:18.10.0 AS static-node
+# Use official Node.js 20.19.0 Alpine image to extract static binary
+FROM node:20.19.0-alpine AS node-official
 
 # Build nodejs-task dependencies  
-FROM node:18.20.0-alpine AS nodejs-deps
+FROM node:20.19.0-alpine AS nodejs-deps
 COPY src/nautilus-server/src/nodejs-task /nodejs-task
 WORKDIR /nodejs-task
 RUN npm ci --production
@@ -87,7 +87,7 @@ RUN cp /src/nautilus-server/run.sh initramfs/
 RUN cp /src/nautilus-server/allowed_endpoints.yaml initramfs/
 # Copy static Node.js binary and application
 RUN mkdir -p initramfs/nodejs/bin
-COPY --from=static-node /bin/node initramfs/nodejs/bin/node
+COPY --from=node-official /usr/local/bin/node initramfs/nodejs/bin/node
 COPY --from=nodejs-deps /nodejs-task initramfs/nodejs-task
 # Ensure the node binary is executable
 RUN chmod +x initramfs/nodejs/bin/node
