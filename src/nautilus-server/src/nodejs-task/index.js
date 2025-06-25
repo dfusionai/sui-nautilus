@@ -1,5 +1,22 @@
 #!/usr/bin/env node
 require("dotenv").config();
+
+// Polyfill for AbortSignal.any() if not available (Node.js < 20.3.0)
+if (!AbortSignal.any) {
+  AbortSignal.any = function(signals) {
+    const controller = new AbortController();
+    for (const signal of signals) {
+      if (signal.aborted) {
+        controller.abort(signal.reason);
+        break;
+      }
+      signal.addEventListener('abort', () => {
+        controller.abort(signal.reason);
+      }, { once: true });
+    }
+    return controller.signal;
+  };
+}
 const { SuiClient, getFullnodeUrl } = require("@mysten/sui/client");
 const { Ed25519Keypair } = require("@mysten/sui/keypairs/ed25519");
 const { Transaction } = require("@mysten/sui/transactions");
