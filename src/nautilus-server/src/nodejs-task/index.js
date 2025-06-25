@@ -44,7 +44,7 @@ const [
 
 // Env variables
 const  MOVE_PACKAGE_ID = process.env.MOVE_PACKAGE_ID || "0xf2433262bd55b30c1cddbae940a2355086cfe2850bd62583bdfcad7c57b17956";
-const  SUI_SECRET_KEY = process.env.SUI_SECRET_KEY || "suiprivkey1qzzw98cfk6mcwh0yr8gkw8qa9vncj6ahml2s32tq5e3kqw6ta5uzc73ql6c";
+const  SUI_SECRET_KEY = process.env.SUI_SECRET_KEY || "suiprivkey1qqd6sesfpyc7e9nds3aattvt073muxdchpcz7ad4064t0mgnfnna5ee977f";
 const  WALRUS_AGGREGATOR_URL = process.env.WALRUS_AGGREGATOR_URL || "https://aggregator.walrus-testnet.walrus.space";
 const  WALRUS_PUBLISHER_URL = process.env.WALRUS_PUBLISHER_URL || "https://publisher.walrus-testnet.walrus.space";
 const  WALRUS_EPOCHS = process.env.WALRUS_EPOCHS || 5;
@@ -122,7 +122,7 @@ async function registerAttestation(fileObjectId) {
 
 async function decryptFile(fileObjectId, attestationObjId, encryptedFile) {
   try {
-    
+
     console.log(`3. Decrypting file: fileObjectId: ${fileObjectId} attestationObjId: ${attestationObjId} address: ${address}`);
 
     const sessionKey = new SessionKey({
@@ -133,8 +133,9 @@ async function decryptFile(fileObjectId, attestationObjId, encryptedFile) {
     });
 
     const message = sessionKey.getPersonalMessage();
+    console.log(`3.1. Personal message: ${message}`);
     const signature = await keypair.signPersonalMessage(Buffer.from(message));
-    console.log(`Signature: ${signature.signature}`);
+    console.log(`3.2. Signature: ${signature.signature}`);
     await sessionKey.setPersonalMessageSignature(signature.signature);
 
     console.log(`4. Initializing transaction: fileObjectId: ${fileObjectId} onChainFileObjId: ${onChainFileObjId} policyObjectId: ${policyObjectId} attestationObjId: ${attestationObjId} address: ${address}`);
@@ -270,7 +271,7 @@ async function publishFile(encryptedData) {
     } else {
       throw new Error("Invalid response format from Walrus");
     }
-    
+
     const metadata = {
       walrusUrl: `${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`,
       size: data.newlyCreated?.blobObject?.size || 0,
@@ -318,7 +319,7 @@ async function saveEncryptedFileOnChain(encryptedRefinedData, metadata, policyOb
     const objId = result?.effects?.created[0]?.reference?.objectId;
     if (!objId) throw new Error("No on-chain file object created");
     console.log(`20. On-chain file object created: ${objId}`);
-    
+
     return objId;
   } catch (err) {
     throw new Error(`saveEncryptedFileOnChain failed: ${err.message} ${JSON.stringify(err)}`);
