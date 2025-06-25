@@ -28,6 +28,7 @@ const {
   getAllowlistedKeyServers,
 } = require("@mysten/seal");
 const bech32 = require("bech32");
+const crypto = require("crypto");
 
 // Validate required env variables
 // const requiredEnv = [
