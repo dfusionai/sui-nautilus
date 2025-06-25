@@ -26,10 +26,10 @@ FROM stagex/user-socat:local@sha256:acef3dacc5b805d0eaaae0c2d13f567bf168620aea98
 FROM stagex/user-jq@sha256:ced6213c21b570dde1077ef49966b64cbf83890859eff83f33c82620520b563e AS user-jq
 
 # Use distroless Node.js that's already statically compiled with musl
-FROM astefanutti/scratch-node:18.10.0 AS static-node
+FROM astefanutti/scratch-node:20.15.0 AS static-node
 
 # Build nodejs-task dependencies
-FROM node:18.20.0-alpine AS nodejs-deps
+FROM node:20.15.0-alpine AS nodejs-deps
 COPY src/nautilus-server/src/nodejs-task /nodejs-task
 WORKDIR /nodejs-task
 RUN npm ci --production
