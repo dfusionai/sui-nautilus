@@ -25,8 +25,9 @@ FROM stagex/user-cpio@sha256:2695e1b42f93ec3ea0545e270f0fda4adca3cb48d0526da0195
 FROM stagex/user-socat:local@sha256:acef3dacc5b805d0eaaae0c2d13f567bf168620aea98c8d3e60ea5fd4e8c3108 AS user-socat
 FROM stagex/user-jq@sha256:ced6213c21b570dde1077ef49966b64cbf83890859eff83f33c82620520b563e AS user-jq
 
-# Use official Node.js 20.19.0 Alpine image to extract static binary
+# Use official Node.js 20.19.0 Alpine image to extract static binary and runtime libraries
 FROM node:20.19.0-alpine AS node-official
+RUN apk add --no-cache libstdc++ libgcc
 
 # Build nodejs-task dependencies  
 FROM node:20.19.0-alpine AS nodejs-deps
@@ -85,9 +86,13 @@ RUN cp /src/nautilus-server/target/${TARGET}/release/nautilus-server initramfs
 RUN cp /src/nautilus-server/traffic_forwarder.py initramfs/
 RUN cp /src/nautilus-server/run.sh initramfs/
 RUN cp /src/nautilus-server/allowed_endpoints.yaml initramfs/
-# Copy static Node.js binary and application
-RUN mkdir -p initramfs/nodejs/bin
+# Copy Node.js binary, runtime libraries and application
+RUN mkdir -p initramfs/nodejs/bin initramfs/usr/lib
 COPY --from=node-official /usr/local/bin/node initramfs/nodejs/bin/node
+# Copy required runtime libraries for dynamic linking
+COPY --from=node-official /usr/lib/libstdc++.so.6* initramfs/usr/lib/
+COPY --from=node-official /usr/lib/libgcc_s.so.1* initramfs/usr/lib/
+COPY --from=node-official /lib/ld-musl-x86_64.so.1* initramfs/lib/
 COPY --from=nodejs-deps /nodejs-task initramfs/nodejs-task
 # Ensure the node binary is executable
 RUN chmod +x initramfs/nodejs/bin/node
