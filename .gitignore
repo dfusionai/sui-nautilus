@@ -12,5 +12,8 @@ secrets-policy.json
 /target
 
 /src/nautilus-server/src/nodejs-task/node_modules
-/src/nautilus-server/src/src/nautilus-server/src/nodejs-task/.tool-versions
-/nodejs-task/.env
+/src/nautilus-server/src/nodejs-task/.tool-versions
+/src/nautilus-server/src/nodejs-task/.env
+
+/.idea
+start.sh

@@ -56,22 +56,31 @@ pub async fn process_data(
     Json(request): Json<ProcessDataRequest<TaskRequest>>,
 ) -> Result<Json<TaskResponse>, EnclaveError> {
     // get attestation
-    let attestationInfo = get_attestation(State(state.clone())).await?;
+    let attestation_info = get_attestation(State(state.clone())).await?;
     
     // Get the absolute path to nodejs-task
     let current_dir = std::env::current_dir().unwrap();
     let task_path = current_dir.join("nodejs-task").to_string_lossy().into_owned();
     
+    // Prepare environment variables from AppState
+    let mut env_vars = std::collections::HashMap::new();
+    env_vars.insert("MOVE_PACKAGE_ID".to_string(), state.move_package_id().to_string());
+    env_vars.insert("SUI_SECRET_KEY".to_string(), state.sui_secret_key().to_string());
+    env_vars.insert("WALRUS_AGGREGATOR_URL".to_string(), state.walrus_aggregator_url().to_string());
+    env_vars.insert("WALRUS_PUBLISHER_URL".to_string(), state.walrus_publisher_url().to_string());
+    env_vars.insert("WALRUS_EPOCHS".to_string(), state.walrus_epochs_str().to_string());
+
     // Configure task runner
     let task_config = TaskConfig {
         task_path,
         timeout_secs: request.payload.timeout_secs.unwrap_or(120),
         args: request.payload.args
             .map(|mut args| {
-                args.push(attestationInfo.attestation.enclaveId.clone());
+                args.push(attestation_info.attestation.enclaveId.clone());
                 args
             })
             .unwrap_or_default(),
+        env_vars,
     };
     
     // Create and run the task
@@ -125,13 +134,17 @@ mod test {
         let state = Arc::new(AppState {
             eph_kp: Ed25519KeyPair::generate(&mut rand::thread_rng()),
             api_key: "test_api_key".to_string(),
+            move_package_id: "0x1234567890abcdef".to_string(),
+            sui_secret_key: "suiprivkey1qtest".to_string(),
+            walrus_aggregator_url: "https://aggregator.walrus-testnet.walrus.space".to_string(),
+            walrus_publisher_url: "https://publisher.walrus-testnet.walrus.space".to_string(),
+            walrus_epochs: "5".to_string(),
         });
         
         let task_response = process_data(
             State(state),
             Json(ProcessDataRequest {
                 payload: TaskRequest {
-                    task_path: Some(task_path.to_string()),
                     timeout_secs: Some(10),
                     args: None,
                 },
@@ -140,9 +153,8 @@ mod test {
         .await
         .unwrap();
         
-        assert_eq!(task_response.response.data.status, "success");
-        assert_eq!(task_response.response.data.exit_code, 0);
-        assert!(task_response.response.data.stdout.contains("Test task executed"));
+        assert_eq!(task_response.status, "success");
+        assert_eq!(task_response.exit_code, 0);
     }
 
     #[test]
@@ -150,9 +162,8 @@ mod test {
         // test result should be consistent with serialization expectations
         use fastcrypto::encoding::{Encoding, Hex};
         let payload = TaskResponse {
-            task_id: "test-123".to_string(),
             status: "success".to_string(),
-            stdout: "Hello World".to_string(),
+            data: "Hello World".to_string(),
             stderr: "".to_string(),
             exit_code: 0,
             execution_time_ms: 1500,

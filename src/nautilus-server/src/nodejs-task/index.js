@@ -30,20 +30,33 @@ const {
 const bech32 = require("bech32");
 const crypto = require("crypto");
 
-// Validate required env variables
-// const requiredEnv = [
-//   "MOVE_PACKAGE_ID",
-//   "SUI_SECRET_KEY",
-//   "WALRUS_AGGREGATOR_URL",
-//   "WALRUS_PUBLISHER_URL",
-//   "WALRUS_EPOCHS",
-// ];
-// for (const key of requiredEnv) {
-//   if (!process.env[key]) {
-//     console.error(`Missing required environment variable: ${key}`);
-//     process.exit(1);
-//   }
-// }
+// Required environment variables that should be passed from Rust app
+const requiredEnvVars = [
+  "MOVE_PACKAGE_ID",
+  "SUI_SECRET_KEY", 
+  "WALRUS_AGGREGATOR_URL",
+  "WALRUS_PUBLISHER_URL",
+  "WALRUS_EPOCHS",
+];
+
+console.log("🔧 Validating environment variables passed from Rust app...");
+const missingVars = [];
+for (const key of requiredEnvVars) {
+  if (!process.env[key]) {
+    missingVars.push(key);
+    console.error(`❌ Missing required environment variable: ${key}`);
+  } else {
+    console.log(`✅ ${key}: ${key.includes('SECRET') ? '***hidden***' : process.env[key]}`);
+  }
+}
+
+if (missingVars.length > 0) {
+  console.error(`💥 Missing ${missingVars.length} required environment variable(s).`);
+  console.error("These should be passed from Rust app via AppState.");
+  process.exit(1);
+}
+
+console.log("✅ All required environment variables are available from Rust app");
 
 // Validate required CLI arguments
 const args = process.argv.slice(2);
@@ -60,12 +73,20 @@ const [
   enclaveId,
 ] = args;
 
-// Env variables
-const  MOVE_PACKAGE_ID = process.env.MOVE_PACKAGE_ID;
-const  SUI_SECRET_KEY = process.env.SUI_SECRET_KEY;
-const  WALRUS_AGGREGATOR_URL = process.env.WALRUS_AGGREGATOR_URL;
-const  WALRUS_PUBLISHER_URL = process.env.WALRUS_PUBLISHER_URL;
-const  WALRUS_EPOCHS = process.env.WALRUS_EPOCHS;
+console.log("📋 CLI Arguments received:");
+console.log(`  Address: ${address}`);
+console.log(`  BlobId: ${blobId}`);
+console.log(`  OnChainFileObjId: ${onChainFileObjId}`);
+console.log(`  PolicyObjectId: ${policyObjectId}`);
+console.log(`  Threshold: ${threshold}`);
+console.log(`  EnclaveId: ${enclaveId}`);
+
+// Environment variables (now passed from Rust app)
+const MOVE_PACKAGE_ID = process.env.MOVE_PACKAGE_ID;
+const SUI_SECRET_KEY = process.env.SUI_SECRET_KEY;
+const WALRUS_AGGREGATOR_URL = process.env.WALRUS_AGGREGATOR_URL;
+const WALRUS_PUBLISHER_URL = process.env.WALRUS_PUBLISHER_URL;
+const WALRUS_EPOCHS = process.env.WALRUS_EPOCHS;
 
 // Initialize Sui client and Seal client
 const suiClient = new SuiClient({ url: getFullnodeUrl("testnet") });

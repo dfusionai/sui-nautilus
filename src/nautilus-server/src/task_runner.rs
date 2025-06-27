@@ -6,6 +6,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskOutput {
@@ -20,6 +21,7 @@ pub struct TaskConfig {
     pub task_path: String,
     pub timeout_secs: u64,
     pub args: Vec<String>,
+    pub env_vars: HashMap<String, String>,
 }
 
 impl Default for TaskConfig {
@@ -28,6 +30,7 @@ impl Default for TaskConfig {
             task_path: "nodejs-task".to_string(),
             timeout_secs: 30,
             args: vec![],
+            env_vars: HashMap::new(),
         }
     }
 }
@@ -36,6 +39,7 @@ pub struct NodeTaskRunner {
     task_path: PathBuf,
     timeout_secs: u64,
     args: Vec<String>,
+    env_vars: HashMap<String, String>,
 }
 
 impl NodeTaskRunner {
@@ -44,6 +48,7 @@ impl NodeTaskRunner {
             task_path: PathBuf::from(config.task_path),
             timeout_secs: config.timeout_secs,
             args: config.args,
+            env_vars: config.env_vars,
         }
     }
 
@@ -120,6 +125,11 @@ impl NodeTaskRunner {
            .current_dir(&self.task_path)
            .stdout(Stdio::piped())
            .stderr(Stdio::piped());
+
+        // Add environment variables from AppState
+        for (key, value) in &self.env_vars {
+            cmd.env(key, value);
+        }
 
         // Add any additional arguments
         for arg in &self.args {

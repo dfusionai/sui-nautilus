@@ -149,6 +149,26 @@ pub struct HealthCheckResponse {
     pub pk: String,
     /// Status of endpoint connectivity checks
     pub endpoints_status: HashMap<String, bool>,
+    /// Configuration status
+    pub config_status: ConfigStatus,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConfigStatus {
+    /// Whether all required environment variables are loaded
+    pub config_valid: bool,
+    /// Configuration details (without sensitive data)
+    pub config_info: ConfigInfo,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConfigInfo {
+    pub move_package_id: String,
+    pub walrus_aggregator_url: String,
+    pub walrus_publisher_url: String,
+    pub walrus_epochs: String,
+    pub api_key_configured: bool,
+    pub sui_secret_key_configured: bool,
 }
 
 /// Endpoint that health checks the enclave connectivity to all
@@ -231,8 +251,58 @@ pub async fn health_check(
         }
     };
 
+    // Check configuration status
+    let config_valid = state.validate_config().is_ok();
+    let config_status = ConfigStatus {
+        config_valid,
+        config_info: ConfigInfo {
+            move_package_id: state.move_package_id().to_string(),
+            walrus_aggregator_url: state.walrus_aggregator_url().to_string(),
+            walrus_publisher_url: state.walrus_publisher_url().to_string(),
+            walrus_epochs: state.walrus_epochs_str().to_string(),
+            api_key_configured: !state.api_key().is_empty(),
+            sui_secret_key_configured: !state.sui_secret_key().is_empty(),
+        },
+    };
+
     Ok(Json(HealthCheckResponse {
         pk: Hex::encode(pk.as_bytes()),
         endpoints_status,
+        config_status,
     }))
+}
+
+/// Configuration endpoint response.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConfigResponse {
+    pub config_valid: bool,
+    pub config_info: ConfigInfo,
+    pub validation_errors: Vec<String>,
+}
+
+/// Endpoint to check current configuration (for debugging)
+/// Only shows non-sensitive configuration data
+pub async fn get_config(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ConfigResponse>, EnclaveError> {
+    let validation_result = state.validate_config();
+    let validation_errors = match &validation_result {
+        Ok(_) => vec![],
+        Err(e) => vec![e.clone()],
+    };
+
+    let config_response = ConfigResponse {
+        config_valid: validation_result.is_ok(),
+        config_info: ConfigInfo {
+            move_package_id: state.move_package_id().to_string(),
+            walrus_aggregator_url: state.walrus_aggregator_url().to_string(),
+            walrus_publisher_url: state.walrus_publisher_url().to_string(),
+            walrus_epochs: state.walrus_epochs_str().to_string(),
+            api_key_configured: !state.api_key().is_empty(),
+            sui_secret_key_configured: !state.sui_secret_key().is_empty(),
+        },
+        validation_errors,
+    };
+
+    Ok(Json(config_response))
 }
