@@ -49,6 +49,16 @@ AMI_ID="${AMI_ID:-ami-085ad6ae776d8f09c}"
 # Environment variable name for our secret; default is 'API_KEY'
 API_ENV_VAR_NAME="${API_ENV_VAR_NAME:-API_KEY}"
 
+# Define all environment variables that will be stored in secrets
+ENV_VARIABLES=(
+    "API_KEY"
+    "MOVE_PACKAGE_ID"
+    "SUI_SECRET_KEY" 
+    "WALRUS_AGGREGATOR_URL"
+    "WALRUS_PUBLISHER_URL"
+    "WALRUS_EPOCHS"
+)
+
 ############################
 # Cleanup Old Files
 ############################
@@ -137,16 +147,50 @@ if [[ "$USE_SECRET" =~ ^[Yy]$ ]]; then
 
     if [[ "$SECRET_CHOICE" =~ ^([Nn]ew|NEW)$ ]]; then
         #----------------------------------------------------
-        # Create a new secret
+        # Create a new secret with multiple environment variables
         #----------------------------------------------------
         read -p "Enter secret name: " USER_SECRET_NAME
-        read -s -p "Enter secret value: " SECRET_VALUE
-        echo ""
         SECRET_NAME="${USER_SECRET_NAME}"
+        
+        echo "Creating secret '$SECRET_NAME' with multiple environment variables..."
+        echo "Please provide values for the following environment variables:"
+        
+        # Create temporary file to store environment variables
+        TEMP_ENV_FILE="/tmp/env_values_$$"
+        
+        # Collect all environment variables
+        for env_var in "${ENV_VARIABLES[@]}"; do
+            if [ "$env_var" = "SUI_SECRET_KEY" ] || [ "$env_var" = "API_KEY" ]; then
+                read -s -p "Enter $env_var: " value
+                echo ""
+            else
+                read -p "Enter $env_var: " value
+            fi
+            echo "$env_var=$value" >> "$TEMP_ENV_FILE"
+        done
+        
+        # Create JSON string with all environment variables
+        SECRET_JSON="{"
+        first=true
+        while IFS='=' read -r key value; do
+            if [ "$first" = true ]; then
+                first=false
+            else
+                SECRET_JSON="${SECRET_JSON},"
+            fi
+            # Escape quotes in values
+            escaped_value=$(echo "$value" | sed 's/"/\\"/g')
+            SECRET_JSON="${SECRET_JSON}\"$key\":\"$escaped_value\""
+        done < "$TEMP_ENV_FILE"
+        SECRET_JSON="${SECRET_JSON}}"
+        
+        # Clean up temporary file
+        rm -f "$TEMP_ENV_FILE"
+        
         echo "Creating secret '$SECRET_NAME' in AWS Secrets Manager..."
         SECRET_ARN=$(aws secretsmanager create-secret \
           --name "$SECRET_NAME" \
-          --secret-string "$SECRET_VALUE" \
+          --secret-string "$SECRET_JSON" \
           --region "$REGION" \
           --query 'ARN' --output text)
         echo "Secret created with ARN: $SECRET_ARN"
@@ -206,20 +250,20 @@ EOF
 
         # Remove old references first and add new secret fetching logic
         if [[ "$(uname)" == "Darwin" ]]; then
-            sed -i '' '/SECRET_VALUE=/d' expose_enclave.sh 2>/dev/null || true
+            sed -i '' '/SECRET_JSON=/d' expose_enclave.sh 2>/dev/null || true
             sed -i '' '/echo.*secrets\.json/d' expose_enclave.sh 2>/dev/null || true
             
             sed -i '' "/# Secrets-block/a\\
-SECRET_VALUE=\$(aws secretsmanager get-secret-value --secret-id ${SECRET_ARN} --region ${REGION} | jq -r .SecretString)\\
-echo \"\$SECRET_VALUE\" | jq -R '{\"${API_ENV_VAR_NAME}\": .}' > secrets.json\\
+SECRET_JSON=\$(aws secretsmanager get-secret-value --secret-id ${SECRET_ARN} --region ${REGION} | jq -r .SecretString)\\
+echo \"\$SECRET_JSON\" > secrets.json\\
 " expose_enclave.sh
         else
-            sed -i '/SECRET_VALUE=/d' expose_enclave.sh 2>/dev/null || true
+            sed -i '/SECRET_JSON=/d' expose_enclave.sh 2>/dev/null || true
             sed -i '/echo.*secrets\.json/d' expose_enclave.sh 2>/dev/null || true
             
             sed -i "/# Secrets-block/a\\
-SECRET_VALUE=\$(aws secretsmanager get-secret-value --secret-id ${SECRET_ARN} --region ${REGION} | jq -r .SecretString)\\
-echo \"\$SECRET_VALUE\" | jq -R '{\"${API_ENV_VAR_NAME}\": .}' > secrets.json" expose_enclave.sh
+SECRET_JSON=\$(aws secretsmanager get-secret-value --secret-id ${SECRET_ARN} --region ${REGION} | jq -r .SecretString)\\
+echo \"\$SECRET_JSON\" > secrets.json" expose_enclave.sh
         fi
 
         echo "Secret fetching logic added to expose_enclave.sh"
@@ -232,20 +276,28 @@ echo \"\$SECRET_VALUE\" | jq -R '{\"${API_ENV_VAR_NAME}\": .}' > secrets.json" e
 
         # Validate that the secret exists and has a value
         echo "Validating secret ARN..."
-        SECRET_VALUE=$(aws secretsmanager get-secret-value --secret-id "$SECRET_ARN" --region "$REGION" 2>&1)
+        SECRET_RESPONSE=$(aws secretsmanager get-secret-value --secret-id "$SECRET_ARN" --region "$REGION" 2>&1)
         if [ $? -ne 0 ]; then
             echo "Error: Failed to retrieve secret. Enter a valid secret ARN and try again. "
             echo "AWS CLI error:"
-            echo "$SECRET_VALUE"
+            echo "$SECRET_RESPONSE"
             exit 1
         fi
         
         # Extract the actual secret value from the JSON response
-        SECRET_VALUE=$(echo "$SECRET_VALUE" | jq -r '.SecretString // empty')
-        if [ -z "$SECRET_VALUE" ]; then
+        SECRET_JSON=$(echo "$SECRET_RESPONSE" | jq -r '.SecretString // empty')
+        if [ -z "$SECRET_JSON" ]; then
             echo "Error: Invalid secret string."
             exit 1
         fi
+        
+        # Validate that it's a valid JSON with expected environment variables
+        echo "Validating secret contains required environment variables..."
+        for env_var in "${ENV_VARIABLES[@]}"; do
+            if ! echo "$SECRET_JSON" | jq -e --arg var "$env_var" 'has($var)' >/dev/null 2>&1; then
+                echo "Warning: Secret does not contain environment variable: $env_var"
+            fi
+        done
         echo "Secret validation successful"
 
         # We won't create a new secret, but we still need the instance role if we need
@@ -304,10 +356,10 @@ EOF
         
         # Remove old references first
         if [[ "$(uname)" == "Darwin" ]]; then
-          sed -i '' '/SECRET_VALUE=/d' expose_enclave.sh 2>/dev/null || true
+          sed -i '' '/SECRET_JSON=/d' expose_enclave.sh 2>/dev/null || true
           sed -i '' '/echo.*secrets\.json/d' expose_enclave.sh 2>/dev/null || true
         else
-          sed -i '/SECRET_VALUE=/d' expose_enclave.sh 2>/dev/null || true
+          sed -i '/SECRET_JSON=/d' expose_enclave.sh 2>/dev/null || true
           sed -i '/echo.*secrets\.json/d' expose_enclave.sh 2>/dev/null || true
         fi
 
@@ -315,12 +367,12 @@ EOF
 
         if [[ "$(uname)" == "Darwin" ]]; then
             sed -i '' "/# Secrets-block/a\\
-SECRET_VALUE=\$(aws secretsmanager get-secret-value --secret-id ${SECRET_ARN} --region ${REGION} | jq -r .SecretString)\\
-echo \"\$SECRET_VALUE\" | jq -R '{\"${API_ENV_VAR_NAME}\": .}' > secrets.json" expose_enclave.sh
+SECRET_JSON=\$(aws secretsmanager get-secret-value --secret-id ${SECRET_ARN} --region ${REGION} | jq -r .SecretString)\\
+echo \"\$SECRET_JSON\" > secrets.json" expose_enclave.sh
         else
             sed -i "/# Secrets-block/a\\
-SECRET_VALUE=\$(aws secretsmanager get-secret-value --secret-id ${SECRET_ARN} --region ${REGION} | jq -r .SecretString)\\
-echo \"\$SECRET_VALUE\" | jq -R '{\"${API_ENV_VAR_NAME}\": .}' > secrets.json" expose_enclave.sh
+SECRET_JSON=\$(aws secretsmanager get-secret-value --secret-id ${SECRET_ARN} --region ${REGION} | jq -r .SecretString)\\
+echo \"\$SECRET_JSON\" > secrets.json" expose_enclave.sh
         fi
 
     else
@@ -330,10 +382,10 @@ echo \"\$SECRET_VALUE\" | jq -R '{\"${API_ENV_VAR_NAME}\": .}' > secrets.json" e
 
         # Remove references
         if [[ "$(uname)" == "Darwin" ]]; then
-          sed -i '' '/SECRET_VALUE=/d' expose_enclave.sh 2>/dev/null || true
+          sed -i '' '/SECRET_JSON=/d' expose_enclave.sh 2>/dev/null || true
           sed -i '' '/echo.*secrets\.json/d' expose_enclave.sh 2>/dev/null || true
         else
-          sed -i '/SECRET_VALUE=/d' expose_enclave.sh 2>/dev/null || true
+          sed -i '/SECRET_JSON=/d' expose_enclave.sh 2>/dev/null || true
           sed -i '/echo.*secrets\.json/d' expose_enclave.sh 2>/dev/null || true
         fi
     fi
@@ -347,10 +399,10 @@ else
 
     # Remove references
     if [[ "$(uname)" == "Darwin" ]]; then
-        sed -i '' '/SECRET_VALUE=/d' expose_enclave.sh 2>/dev/null || true
+        sed -i '' '/SECRET_JSON=/d' expose_enclave.sh 2>/dev/null || true
         sed -i '' '/echo.*secrets\.json/d' expose_enclave.sh 2>/dev/null || true
     else
-        sed -i '/SECRET_VALUE=/d' expose_enclave.sh 2>/dev/null || true
+        sed -i '/SECRET_JSON=/d' expose_enclave.sh 2>/dev/null || true
         sed -i '/echo.*secrets\.json/d' expose_enclave.sh 2>/dev/null || true
     fi
 fi

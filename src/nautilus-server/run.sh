@@ -33,6 +33,7 @@ echo "127.0.0.69   seal-key-server-testnet-2.mystenlabs.com" >> /etc/hosts
 
 
 
+
 # == ATTENTION: code should be generated here that parses allowed_endpoints.yaml and populate domains here ===
 
 cat /etc/hosts
@@ -56,6 +57,7 @@ python3 /traffic_forwarder.py 127.0.0.66 443 3 8103 &
 python3 /traffic_forwarder.py 127.0.0.67 443 3 8104 &
 python3 /traffic_forwarder.py 127.0.0.68 443 3 8105 &
 python3 /traffic_forwarder.py 127.0.0.69 443 3 8106 &
+
 
 
 
