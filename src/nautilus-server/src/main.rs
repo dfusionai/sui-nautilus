@@ -17,7 +17,6 @@ async fn main() -> Result<()> {
 
     // Load all environment variables required by the application
     // These values are stored in AWS Secrets Manager and injected via configure_enclave.sh
-    let api_key = std::env::var("API_KEY").expect("API_KEY must be set");
     let move_package_id = std::env::var("MOVE_PACKAGE_ID").expect("MOVE_PACKAGE_ID must be set");
     let sui_secret_key = std::env::var("SUI_SECRET_KEY").expect("SUI_SECRET_KEY must be set");
     let walrus_aggregator_url = std::env::var("WALRUS_AGGREGATOR_URL").expect("WALRUS_AGGREGATOR_URL must be set");
@@ -30,12 +29,10 @@ async fn main() -> Result<()> {
     info!("  WALRUS_AGGREGATOR_URL: {}", walrus_aggregator_url);
     info!("  WALRUS_PUBLISHER_URL: {}", walrus_publisher_url);
     info!("  WALRUS_EPOCHS: {}", walrus_epochs);
-    info!("  API_KEY: ****** (hidden)");
     info!("  SUI_SECRET_KEY: ****** (hidden)");
 
     let state = Arc::new(AppState { 
         eph_kp, 
-        api_key,
         move_package_id,
         sui_secret_key,
         walrus_aggregator_url,

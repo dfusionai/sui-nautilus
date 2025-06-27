@@ -34,7 +34,7 @@ if [ -f ".env" ]; then
     echo -e "${GREEN}✅ .env file exists${NC}"
     
     # Check required variables
-    required_vars=("API_KEY" "MOVE_PACKAGE_ID" "SUI_SECRET_KEY" "WALRUS_AGGREGATOR_URL" "WALRUS_PUBLISHER_URL" "WALRUS_EPOCHS")
+    required_vars=("MOVE_PACKAGE_ID" "SUI_SECRET_KEY" "WALRUS_AGGREGATOR_URL" "WALRUS_PUBLISHER_URL" "WALRUS_EPOCHS")
     missing_vars=()
     
     source .env
@@ -65,7 +65,7 @@ echo -e "${YELLOW}📋 Test 3: Testing JSON secret creation...${NC}"
 temp_json="/tmp/test_secret.json"
 cat > "$temp_json" << EOF
 {
-    "API_KEY": "test_api_key_value",
+  
     "MOVE_PACKAGE_ID": "0x1234567890abcdef",
     "SUI_SECRET_KEY": "suiprivkey1qtest",
     "WALRUS_AGGREGATOR_URL": "https://aggregator.walrus-testnet.walrus.space",

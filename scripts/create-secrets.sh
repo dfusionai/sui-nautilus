@@ -77,7 +77,7 @@ fi
 
 # Required environment variables
 REQUIRED_VARS=(
-    "API_KEY"
+    
     "MOVE_PACKAGE_ID"
     "SUI_SECRET_KEY"
     "WALRUS_AGGREGATOR_URL"

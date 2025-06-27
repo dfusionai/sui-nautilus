@@ -83,7 +83,7 @@ validate_env() {
     
     # Required variables for Node.js task
     required_vars=(
-        "API_KEY"
+        
         "MOVE_PACKAGE_ID" 
         "SUI_SECRET_KEY"
         "WALRUS_AGGREGATOR_URL"
@@ -130,7 +130,7 @@ test_env_locally() {
     set +a
     
     echo -e "${BLUE}📋 Loaded variables:${NC}"
-    echo "  API_KEY: ${API_KEY:0:10}***"
+
     echo "  MOVE_PACKAGE_ID: ${MOVE_PACKAGE_ID:0:20}***"
     echo "  SUI_SECRET_KEY: ${SUI_SECRET_KEY:0:15}***"
     echo "  WALRUS_AGGREGATOR_URL: $WALRUS_AGGREGATOR_URL"

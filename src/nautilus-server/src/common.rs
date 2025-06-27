@@ -33,11 +33,13 @@ pub struct IntentMessage<T: Serialize> {
 }
 
 /// Intent scope enum. Add new scope here if needed, each corresponds to a
-/// scope for signing. Replace in with your own intent per message type being signed by the enclave.
+g/// scope for signing. Replace with your own intent per message type being signed by the enclave.
 #[derive(Serialize_repr, Deserialize_repr, Debug)]
 #[repr(u8)]
 pub enum IntentScope {
-    Weather = 0,
+    // Add your own intent scopes here
+    // Example: DataProcessing = 0,
+    Generic = 0,
 }
 
 impl<T: Serialize + Debug> IntentMessage<T> {
@@ -167,7 +169,7 @@ pub struct ConfigInfo {
     pub walrus_aggregator_url: String,
     pub walrus_publisher_url: String,
     pub walrus_epochs: String,
-    pub api_key_configured: bool,
+
     pub sui_secret_key_configured: bool,
 }
 
@@ -260,7 +262,6 @@ pub async fn health_check(
             walrus_aggregator_url: state.walrus_aggregator_url().to_string(),
             walrus_publisher_url: state.walrus_publisher_url().to_string(),
             walrus_epochs: state.walrus_epochs_str().to_string(),
-            api_key_configured: !state.api_key().is_empty(),
             sui_secret_key_configured: !state.sui_secret_key().is_empty(),
         },
     };
@@ -298,7 +299,6 @@ pub async fn get_config(
             walrus_aggregator_url: state.walrus_aggregator_url().to_string(),
             walrus_publisher_url: state.walrus_publisher_url().to_string(),
             walrus_epochs: state.walrus_epochs_str().to_string(),
-            api_key_configured: !state.api_key().is_empty(),
             sui_secret_key_configured: !state.sui_secret_key().is_empty(),
         },
         validation_errors,

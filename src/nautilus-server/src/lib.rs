@@ -17,9 +17,6 @@ pub struct AppState {
     /// Ephemeral keypair on boot
     pub eph_kp: Ed25519KeyPair,
     
-    /// Authentication API key
-    pub api_key: String,
-    
     /// Sui blockchain configuration
     pub move_package_id: String,
     pub sui_secret_key: String,
@@ -31,11 +28,6 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Get API key for authentication
-    pub fn api_key(&self) -> &str {
-        &self.api_key
-    }
-
     /// Get Sui Move package ID
     pub fn move_package_id(&self) -> &str {
         &self.move_package_id
@@ -68,9 +60,6 @@ impl AppState {
 
     /// Check if all required environment variables are properly configured
     pub fn validate_config(&self) -> Result<(), String> {
-        if self.api_key.is_empty() {
-            return Err("API_KEY is empty".to_string());
-        }
         if self.move_package_id.is_empty() {
             return Err("MOVE_PACKAGE_ID is empty".to_string());
         }
@@ -125,7 +114,6 @@ mod tests {
         // Create AppState with test values
         let state = AppState {
             eph_kp: Ed25519KeyPair::generate(&mut rand::thread_rng()),
-            api_key: "test_api_key".to_string(),
             move_package_id: "0x1234567890abcdef".to_string(),
             sui_secret_key: "suiprivkey1qtest".to_string(),
             walrus_aggregator_url: "https://aggregator.walrus-testnet.walrus.space".to_string(),

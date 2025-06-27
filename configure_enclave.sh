@@ -51,7 +51,6 @@ API_ENV_VAR_NAME="${API_ENV_VAR_NAME:-API_KEY}"
 
 # Define all environment variables that will be stored in secrets
 ENV_VARIABLES=(
-    "API_KEY"
     "MOVE_PACKAGE_ID"
     "SUI_SECRET_KEY" 
     "WALRUS_AGGREGATOR_URL"
@@ -160,7 +159,7 @@ if [[ "$USE_SECRET" =~ ^[Yy]$ ]]; then
         
         # Collect all environment variables
         for env_var in "${ENV_VARIABLES[@]}"; do
-            if [ "$env_var" = "SUI_SECRET_KEY" ] || [ "$env_var" = "API_KEY" ]; then
+            if [ "$env_var" = "SUI_SECRET_KEY" ]; then
                 read -s -p "Enter $env_var: " value
                 echo ""
             else
