@@ -17,18 +17,7 @@ if (!AbortSignal.any) {
     return controller.signal;
   };
 }
-const { SuiClient, getFullnodeUrl } = require("@mysten/sui/client");
-const { Ed25519Keypair } = require("@mysten/sui/keypairs/ed25519");
-const { Transaction } = require("@mysten/sui/transactions");
-const { fromHex, toHex } = require("@mysten/sui/utils");
-const {
-  SealClient,
-  SessionKey,
-  EncryptedObject,
-  getAllowlistedKeyServers,
-} = require("@mysten/seal");
-const bech32 = require("bech32");
-const crypto = require("crypto");
+
 const ServiceFactory = require("./services/factory/service-factory");
 
 // Required environment variables that should be passed from Rust app
@@ -86,373 +75,266 @@ console.log(`  PolicyObjectId: ${policyObjectId}`);
 console.log(`  Threshold: ${threshold}`);
 console.log(`  EnclaveId: ${enclaveId}`);
 
-// Environment variables (now passed from Rust app)
-const MOVE_PACKAGE_ID = process.env.MOVE_PACKAGE_ID;
-const SUI_SECRET_KEY = process.env.SUI_SECRET_KEY;
-const WALRUS_AGGREGATOR_URL = process.env.WALRUS_AGGREGATOR_URL;
-const WALRUS_PUBLISHER_URL = process.env.WALRUS_PUBLISHER_URL;
-const WALRUS_EPOCHS = process.env.WALRUS_EPOCHS;
-
-// Initialize Sui client and Seal client
-const suiClient = new SuiClient({ url: getFullnodeUrl("testnet") });
-const keyServers = getAllowlistedKeyServers("testnet") || [];
-const sealClient = new SealClient({
-  suiClient,
-  serverObjectIds: keyServers.map((id) => [id, 1]),
-  verifyKeyServers: false,
-});
-
-// Initialize keypair from secret key
-let keypair;
-try {
-  const decoded = bech32.bech32.decode(SUI_SECRET_KEY);
-  if (!decoded) throw new Error("Invalid bech32 private key format");
-  const privateKeyBytes = bech32.bech32.fromWords(decoded.words);
-  const rawSecretKey = Buffer.from(privateKeyBytes).slice(1);
-  keypair = Ed25519Keypair.fromSecretKey(rawSecretKey);
-} catch (err) {
-  console.error("Failed to initialize keypair:", err);
-  process.exit(1);
-}
-
-// --- Helper Functions ---
-
-// Initialize services using factory pattern
-let messageProcessor = null;
+// --- Services ---
+let services = {};
 
 async function initializeServices() {
   try {
-    console.log("🔧 Initializing embedding and vector database services...");
+    console.log("🔧 Initializing all services...");
     
-    messageProcessor = ServiceFactory.createMessageProcessor('ollama', 'qdrant', {
-      embedding: {
+    // Initialize all services using factory
+    services = {
+      refinement: ServiceFactory.createRefinementService('chat'),
+      embedding: ServiceFactory.createEmbeddingService('ollama', {
         batchSize: parseInt(process.env.EMBEDDING_BATCH_SIZE || '10')
-      },
-      vectorDb: {
+      }),
+      vectorDb: ServiceFactory.createVectorDbService('qdrant', {
         batchSize: parseInt(process.env.VECTOR_BATCH_SIZE || '100')
-      },
-      processor: {
-        batchSize: parseInt(process.env.PROCESSING_BATCH_SIZE || '50'),
-        storeVectors: process.env.STORE_VECTORS !== 'false',
-        includeEmbeddingsInOutput: process.env.INCLUDE_EMBEDDINGS !== 'false'
-      }
-    });
+      }),
+      blockchain: ServiceFactory.createBlockchainServices()
+    };
 
-    const healthCheck = await messageProcessor.healthCheck();
-    console.log("🔍 Service health check:", healthCheck);
+    // Initialize blockchain services
+    await services.blockchain.sui.initialize();
     
-    if (healthCheck.status === 'healthy') {
-      console.log("✅ All services initialized successfully");
-    } else {
-      console.log("⚠️  Some services may have issues, but continuing...");
-    }
-    
-    return messageProcessor;
+    console.log("✅ All services initialized successfully");
+    return services;
   } catch (error) {
     console.error("❌ Failed to initialize services:", error.message);
     throw error;
   }
 }
 
-async function fetchEncryptedFile() {
-  const walrus_url = `${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`;
-  try {
-    const res = await fetch(walrus_url, {
-      headers: { "Content-Type": "application/octet-stream" },
-      method: "GET",
-    });
-    console.log(`1. Fetching encrypted file from ${walrus_url}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-    const encryptedFile = await res.arrayBuffer();
-    if (!encryptedFile) throw new Error("Empty response from Walrus");
-    return encryptedFile;
-  } catch (err) {
-    throw new Error(`fetchEncryptedFile failed: ${err.message} ${JSON.stringify(err)} ${walrus_url}`);
+async function processMessagesDirectly(messages, embeddingService, vectorDbService) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    console.log('⚠️  No messages to process');
+    return [];
   }
-}
 
-async function registerAttestation(fileObjectId) {
-  try {
-    const tx = new Transaction();
-    tx.setGasBudget(10_000_000);
-    tx.setSender(keypair.getPublicKey().toSuiAddress());
-    tx.moveCall({
-      target: `${MOVE_PACKAGE_ID}::seal_manager::register_tee_attestation`,
-      arguments: [
-        tx.pure.vector("u8", new TextEncoder().encode(enclaveId)),
-        tx.pure.vector("u8", fromHex(fileObjectId)),
-        tx.pure.address(address),
-      ],
-    });
-
-    const result = await suiClient.signAndExecuteTransaction({
-      transaction: tx,
-      signer: keypair,
-      requestType: "WaitForLocalExecution",
-      options: { showEffects: true },
-    });
-
-    const attestationObjId = result?.effects?.created[0]?.reference?.objectId;
-    if (!attestationObjId) throw new Error("No attestation object created");
-    console.log(`2. Attestation object created: ${attestationObjId}`);
-    return attestationObjId;
-  } catch (err) {
-    throw new Error(`registerAttestation failed: ${err.message} ${JSON.stringify(err)} ${MOVE_PACKAGE_ID}`);
-  }
-}
-
-async function decryptFile(fileObjectId, attestationObjId, encryptedFile) {
-  try {
-
-    console.log(`3. Decrypting file: fileObjectId: ${fileObjectId} attestationObjId: ${attestationObjId} address: ${address}`);
-
-    const sessionKey = new SessionKey({
-      address,
-      packageId: MOVE_PACKAGE_ID,
-      ttlMin: 10,
-      client: suiClient,
-    });
-
-    const message = sessionKey.getPersonalMessage();
-    console.log(`3.1. Personal message: ${message}`);
-    const signature = await keypair.signPersonalMessage(Buffer.from(message));
-    console.log(`3.2. Signature: ${signature.signature}`);
-    await sessionKey.setPersonalMessageSignature(signature.signature);
-
-    console.log(`4. Initializing transaction: fileObjectId: ${fileObjectId} onChainFileObjId: ${onChainFileObjId} policyObjectId: ${policyObjectId} attestationObjId: ${attestationObjId} address: ${address}`);
-
-    const tx = new Transaction();
-    tx.setGasBudget(10_000_000);
-    tx.setSender(keypair.getPublicKey().toSuiAddress());
-    tx.moveCall({
-      target: `${MOVE_PACKAGE_ID}::seal_manager::seal_approve`,
-      arguments: [
-        tx.pure.vector("u8", fromHex(fileObjectId)),
-        tx.object(onChainFileObjId),
-        tx.object(policyObjectId),
-        tx.object(attestationObjId),
-        tx.pure.address(address),
-      ],
-    });
-
-    console.log(`5. Building transaction`);
-
-    const txBytes = await tx.build({
-      client: suiClient,
-      onlyTransactionKind: true,
-    });
-
-    console.log(`6. TX bytes: ${txBytes}`);
-
-    await sealClient.fetchKeys({
-      ids: [fileObjectId],
-      txBytes,
-      sessionKey,
-      threshold: Number(threshold),
-    });
-
-    console.log(`7. Fetched keys`);
-
-    const decryptedBytes = await sealClient.decrypt({
-      data: new Uint8Array(encryptedFile),
-      sessionKey,
-      txBytes,
-    });
-
-    console.log(`8. Decrypted bytes: ${decryptedBytes}`);
-
-    const decoder = new TextDecoder("utf-8");
-    const jsonString = decoder.decode(decryptedBytes);
-    console.log(`9. JSON string: ${jsonString}`);
-    return JSON.parse(jsonString);
-  } catch (err) {
-    throw new Error(`decryptFile failed: ${err.message} ${JSON.stringify(err)} ${MOVE_PACKAGE_ID}`);
-  }
-}
-
-async function processData(rawData) {
-  const refinedData = {
-    revision: rawData.revision,
-    user: rawData.user,
-    messages: [],
+  console.log(`🔄 Starting direct message processing for ${messages.length} messages`);
+  
+  const batchSize = parseInt(process.env.PROCESSING_BATCH_SIZE || '50');
+  const storeVectors = process.env.STORE_VECTORS !== 'false';
+  const includeEmbeddings = process.env.INCLUDE_EMBEDDINGS !== 'false';
+  
+  const results = [];
+  const stats = {
+    totalMessages: messages.length,
+    successfulEmbeddings: 0,
+    failedEmbeddings: 0,
+    storedVectors: 0,
+    failedVectorStorage: 0
   };
 
-  console.log(`10. Processing data: ${rawData}`);
+  // Connect to vector database if needed
+  if (storeVectors && !vectorDbService.isConnected()) {
+    await vectorDbService.connect();
+  }
 
-  if (rawData.chats && Array.isArray(rawData.chats)) {
-    for (const chat of rawData.chats) {
-      if (chat.contents && Array.isArray(chat.contents)) {
-        for (const msg of chat.contents) {
-          const messageData = {
-            id: msg.id,
-            from_id: msg.fromId?.userId || null,
-            date: msg.date ? new Date(msg.date * 1000).toISOString() : null,
-            edit_date: msg.editDate ? new Date(msg.editDate * 1000).toISOString() : null,
-            message: msg.message,
-            out: msg.out,
-            reactions: msg.reactions
-              ? {
-                  emoji: msg.reactions.recentReactions?.[0]?.reaction?.emoticon || null,
-                  count: msg.reactions.results?.[0]?.count || null,
-                }
-              : null,
-          };
+  for (let i = 0; i < messages.length; i += batchSize) {
+    const batch = messages.slice(i, i + batchSize);
+    const batchNum = Math.floor(i / batchSize) + 1;
+    const totalBatches = Math.ceil(messages.length / batchSize);
+    
+    console.log(`📦 Processing batch ${batchNum}/${totalBatches} (${batch.length} messages)`);
+    
+    const messagesWithText = batch.filter(msg => 
+      msg.message && typeof msg.message === 'string' && msg.message.trim().length > 0
+    );
 
-          refinedData.messages.push(messageData);
+    if (messagesWithText.length === 0) {
+      console.log('⚠️  No messages with text content in this batch');
+      results.push(...batch.map(msg => ({
+        ...msg,
+        embedding: null,
+        vectorStored: false,
+        processingError: 'No text content'
+      })));
+      continue;
+    }
+
+    // Generate embeddings for batch
+    const embeddingResults = await embeddingService.embedBatch(
+      messagesWithText.map(msg => msg.message)
+    );
+
+    // Process results and prepare for vector storage
+    const vectorsToStore = [];
+    
+    for (let j = 0; j < batch.length; j++) {
+      const originalMessage = batch[j];
+      const messageWithTextIndex = messagesWithText.findIndex(msg => msg.id === originalMessage.id);
+      
+      if (messageWithTextIndex === -1) {
+        results.push({
+          ...originalMessage,
+          embedding: null,
+          vectorStored: false,
+          processingError: 'No text content'
+        });
+        continue;
+      }
+
+      const embeddingResult = embeddingResults[messageWithTextIndex];
+      
+      if (embeddingResult.success) {
+        stats.successfulEmbeddings++;
+        
+        const processedMessage = {
+          ...originalMessage,
+          embedding: includeEmbeddings ? embeddingResult.embedding : null,
+          vectorStored: false,
+          embeddingDimensions: embeddingResult.embedding.length
+        };
+
+        if (storeVectors) {
+          vectorsToStore.push({
+            id: originalMessage.id,
+            vector: embeddingResult.embedding,
+            metadata: {
+              message_id: originalMessage.id,
+              from_id: originalMessage.from_id,
+              date: originalMessage.date,
+              message_text: originalMessage.message,
+              out: originalMessage.out,
+              reactions: originalMessage.reactions,
+              processed_at: new Date().toISOString()
+            }
+          });
         }
+
+        results.push(processedMessage);
+      } else {
+        stats.failedEmbeddings++;
+        results.push({
+          ...originalMessage,
+          embedding: null,
+          vectorStored: false,
+          processingError: embeddingResult.error || 'Unknown embedding error'
+        });
       }
     }
-    // Optional: sort by date if you want
-    refinedData.messages.sort((a, b) => new Date(a.date) - new Date(b.date));
-  }
 
-  console.log(`11. Processing ${refinedData.messages.length} messages with embedding and vector storage...`);
-
-  if (!messageProcessor) {
-    throw new Error("Message processor not initialized");
-  }
-
-  const processedMessages = await messageProcessor.processMessages(refinedData.messages);
-  
-  const stats = messageProcessor.getStats();
-  console.log(`✅ Message processing completed. Stats: ${JSON.stringify(stats)}`);
-  
-  return {
-    ...refinedData,
-    messages: processedMessages,
-    processingStats: stats
-  };
-}
-
-async function encryptFile(refinedData) {
-  try {
-    console.log(`12. Encrypting file: policyObjectId: ${policyObjectId}`);
-    const policyObjectBytes = fromHex(policyObjectId);
-    const nonce = crypto.getRandomValues(new Uint8Array(5));
-    const id = toHex(new Uint8Array([...policyObjectBytes, ...nonce]));
-
-    console.log(`13. Encrypting file: id: ${id}`);
-    const { encryptedObject: encryptedBytes } = await sealClient.encrypt({
-      threshold: 2,
-      packageId: MOVE_PACKAGE_ID,
-      id,
-      data: new Uint8Array(new TextEncoder().encode(JSON.stringify(refinedData))),
-    });
-
-    console.log(`14. Encrypted bytes: ${encryptedBytes}`);
-    return encryptedBytes;
-  } catch (err) {
-    throw new Error(`encryptFile failed: ${err.message} ${JSON.stringify(err)} ${MOVE_PACKAGE_ID}`);
-  }
-}
-
-async function publishFile(encryptedData) {
-  try {
-    const uploadUrl = `${WALRUS_PUBLISHER_URL}/v1/blobs?epochs=${WALRUS_EPOCHS}`;
-
-    console.log(`15. Publishing file: uploadUrl: ${uploadUrl}`);
-
-    const response = await fetch(uploadUrl, {
-      method: "PUT",
-      body: encryptedData,
-      headers: { "Content-Type": "application/octet-stream" },
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    const data = await response.json();
-    let blobId;
-    if (data.newlyCreated) {
-      blobId = data.newlyCreated.blobObject.blobId;
-    } else if (data.alreadyCertified) {
-      blobId = data.alreadyCertified.blobId;
-    } else {
-      throw new Error("Invalid response format from Walrus");
+    // Store vectors if any
+    if (vectorsToStore.length > 0 && storeVectors) {
+      try {
+        console.log(`📊 Storing ${vectorsToStore.length} vectors in vector database...`);
+        const storeResults = await vectorDbService.storeBatch(vectorsToStore);
+        
+        for (let k = 0; k < storeResults.length; k++) {
+          const storeResult = storeResults[k];
+          const messageIndex = results.findIndex(msg => msg.id.toString() === storeResult.id);
+          
+          if (messageIndex !== -1) {
+            if (storeResult.success) {
+              results[messageIndex].vectorStored = true;
+              stats.storedVectors++;
+            } else {
+              results[messageIndex].vectorStored = false;
+              results[messageIndex].vectorStorageError = storeResult.error || 'Unknown storage error';
+              stats.failedVectorStorage++;
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`❌ Failed to store vectors: ${error.message}`);
+        stats.failedVectorStorage += vectorsToStore.length;
+      }
     }
 
-    const metadata = {
-      walrusUrl: `${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`,
-      size: data.newlyCreated?.blobObject?.size || 0,
-      storageSize: data.newlyCreated?.blobObject?.storage?.storageSize || 0,
-      blobId,
-    };
-
-    console.log(`16. Metadata: ${metadata}`);
-
-    return metadata;
-  } catch (err) {
-    throw new Error(`publishFile failed: ${err.message} ${JSON.stringify(err)} ${uploadUrl}`);
+    // Small delay between batches
+    if (i + batchSize < messages.length) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
   }
-}
 
-async function saveEncryptedFileOnChain(encryptedRefinedData, metadata, policyObjId) {
-  try {
-    console.log(`17. Saving encrypted file on chain: encryptedRefinedData: ${encryptedRefinedData} metadata: ${metadata} policyObjId: ${policyObjId}`);
-    const encryptedData = new Uint8Array(encryptedRefinedData);
-    const encryptedObject = EncryptedObject.parse(encryptedData);
-
-    console.log(`18. Building transaction`);
-    const tx = new Transaction();
-    tx.setGasBudget(10_000_000);
-    const metadataBytes = new Uint8Array(
-      new TextEncoder().encode(JSON.stringify(metadata))
-    );
-    tx.moveCall({
-      target: `${MOVE_PACKAGE_ID}::seal_manager::save_encrypted_file`,
-      arguments: [
-        tx.pure.vector("u8", fromHex(encryptedObject.id)),
-        tx.object(policyObjId),
-        tx.pure.vector("u8", metadataBytes),
-      ],
-    });
-
-    console.log(`19. Signing and executing transaction`);
-    const result = await suiClient.signAndExecuteTransaction({
-      transaction: tx,
-      signer: keypair,
-      requestType: "WaitForLocalExecution",
-      options: { showEffects: true },
-    });
-
-    const objId = result?.effects?.created[0]?.reference?.objectId;
-    if (!objId) throw new Error("No on-chain file object created");
-    console.log(`20. On-chain file object created: ${objId}`);
-
-    return objId;
-  } catch (err) {
-    throw new Error(`saveEncryptedFileOnChain failed: ${err.message} ${JSON.stringify(err)}`);
-  }
+  console.log(`✅ Direct message processing completed. Stats:`, stats);
+  return { messages: results, stats };
 }
 
 // --- Main Task Runner ---
 async function runTasks() {
   try {
+    console.log("🚀 Starting task execution...");
+    
+    // Initialize all services
     await initializeServices();
     
-    const encryptedFile = await fetchEncryptedFile();
-    const encryptedData = new Uint8Array(encryptedFile);
-    const encryptedObject = EncryptedObject.parse(encryptedData);
-    const attestationObjId = await registerAttestation(encryptedObject.id);
-    const decryptedFile = await decryptFile(
+    // Step 1: Fetch encrypted file from Walrus
+    console.log("📥 Step 1: Fetching encrypted file...");
+    const encryptedFile = await services.blockchain.walrus.fetchEncryptedFile(blobId);
+    
+    // Step 2: Parse encrypted object
+    console.log("📦 Step 2: Parsing encrypted object...");
+    const encryptedObject = services.blockchain.seal.parseEncryptedObject(encryptedFile);
+    
+    // Step 3: Register attestation
+    console.log("🔗 Step 3: Registering attestation...");
+    const attestationObjId = await services.blockchain.sui.registerAttestation(
+      encryptedObject.id, 
+      enclaveId, 
+      address
+    );
+    
+    // Step 4: Decrypt file
+    console.log("🔓 Step 4: Decrypting file...");
+    const decryptedFile = await services.blockchain.seal.decryptFile(
       encryptedObject.id,
       attestationObjId,
-      encryptedFile
+      encryptedFile,
+      address,
+      onChainFileObjId,
+      policyObjectId,
+      threshold,
+      services.blockchain.sui
     );
-    const refinedData = await processData(decryptedFile);
-    const encryptedRefinedData = await encryptFile(refinedData);
-    const metadata = await publishFile(encryptedRefinedData);
-    const onChainFileObjId = await saveEncryptedFileOnChain(
+    
+    // Step 5: Refine data
+    console.log("📝 Step 5: Refining data...");
+    const refinedData = await services.refinement.refineData(decryptedFile);
+    
+    // Step 6: Process messages (embedding + vector storage)
+    console.log("🔤 Step 6: Processing messages with embeddings...");
+    const processedData = await processMessagesDirectly(
+      refinedData.messages, 
+      services.embedding, 
+      services.vectorDb
+    );
+    
+    // Step 7: Encrypt refined data
+    console.log("🔒 Step 7: Encrypting processed data...");
+    const finalData = {
+      ...refinedData,
+      messages: processedData.messages,
+      processingStats: processedData.stats
+    };
+    const encryptedRefinedData = await services.blockchain.seal.encryptFile(finalData, policyObjectId);
+    
+    // Step 8: Publish to Walrus
+    console.log("📤 Step 8: Publishing to Walrus...");
+    const metadata = await services.blockchain.walrus.publishFile(encryptedRefinedData);
+    
+    // Step 9: Save on-chain
+    console.log("💾 Step 9: Saving on-chain...");
+    const onChainFileObjId = await services.blockchain.sui.saveEncryptedFileOnChain(
       encryptedRefinedData,
       metadata,
       policyObjectId
     );
-    console.log(
-      JSON.stringify({
-        walrusUrl: metadata.walrusUrl,
-        attestationObjId,
-        onChainFileObjId,
-        blobId: metadata.blobId,
-        processingStats: refinedData.processingStats,
-      })
-    );
+    
+    // Output results
+    const result = {
+      walrusUrl: metadata.walrusUrl,
+      attestationObjId,
+      onChainFileObjId,
+      blobId: metadata.blobId,
+      refinementStats: refinedData.refinementStats,
+      processingStats: processedData.stats,
+      metadata
+    };
+    
+    console.log("✅ Task completed successfully!");
+    console.log(JSON.stringify(result, null, 2));
     process.exit(0);
   } catch (error) {
     console.error("💥 Task failed:", error.stack || error.message);

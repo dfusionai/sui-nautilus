@@ -35,27 +35,69 @@ class ServiceFactory {
     }
   }
 
-  static createMessageProcessor(embeddingType = null, vectorDbType = null, options = {}) {
-    const processorConfig = config.processor;
-    
-    const embeddingService = this.createEmbeddingService(
-      embeddingType || processorConfig.defaultEmbeddingProvider,
-      options.embedding || {}
-    );
-    
-    const vectorDbService = this.createVectorDbService(
-      vectorDbType || processorConfig.defaultVectorDbProvider,
-      options.vectorDb || {}
-    );
+  static createRefinementService(type = 'chat', options = {}) {
+    const providerConfig = config.refinement.providers[type];
+    if (!providerConfig) {
+      throw new Error(`Unknown refinement service type: ${type}`);
+    }
 
-    const MessageProcessor = require('../processors/message-processor');
-    return new MessageProcessor(embeddingService, vectorDbService, options.processor || {});
+    const mergedOptions = { ...providerConfig, ...options };
+
+    switch (type) {
+      case 'chat':
+        const ChatRefinement = require('../data-refinement/chat-refinement');
+        return new ChatRefinement(mergedOptions);
+      default:
+        throw new Error(`Unsupported refinement service type: ${type}`);
+    }
+  }
+
+  static createSuiService(options = {}) {
+    const providerConfig = config.blockchain.providers.sui;
+    const mergedOptions = { ...providerConfig, ...options };
+
+    const SuiOperations = require('../blockchain/sui-operations');
+    return new SuiOperations(mergedOptions);
+  }
+
+  static createWalrusService(options = {}) {
+    const providerConfig = config.blockchain.providers.walrus;
+    const mergedOptions = { ...providerConfig, ...options };
+
+    const WalrusOperations = require('../blockchain/walrus-operations');
+    return new WalrusOperations(mergedOptions);
+  }
+
+  static createSealService(suiClient, options = {}) {
+    const providerConfig = config.blockchain.providers.seal;
+    const mergedOptions = { ...providerConfig, ...options };
+
+    const SealOperations = require('../blockchain/seal-operations');
+    return new SealOperations(suiClient, mergedOptions);
+  }
+
+  static createBlockchainServices(options = {}) {
+    const suiService = this.createSuiService(options.sui || {});
+    const walrusService = this.createWalrusService(options.walrus || {});
+    
+    // Initialize Sui client for Seal operations
+    const { SuiClient, getFullnodeUrl } = require("@mysten/sui/client");
+    const suiClient = new SuiClient({ url: getFullnodeUrl("testnet") });
+    const sealService = this.createSealService(suiClient, options.seal || {});
+
+    return {
+      sui: suiService,
+      walrus: walrusService,
+      seal: sealService
+    };
   }
 
   static getAvailableServices() {
     return {
       embedding: Object.keys(config.embedding.providers),
-      vectorDb: Object.keys(config.vectorDb.providers)
+      vectorDb: Object.keys(config.vectorDb.providers),
+      refinement: Object.keys(config.refinement.providers),
+      blockchain: Object.keys(config.blockchain.providers)
     };
   }
 }
