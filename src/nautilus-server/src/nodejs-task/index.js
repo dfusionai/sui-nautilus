@@ -29,6 +29,7 @@ const {
 } = require("@mysten/seal");
 const bech32 = require("bech32");
 const crypto = require("crypto");
+const ServiceFactory = require("./services/factory/service-factory");
 
 // Required environment variables that should be passed from Rust app
 const requiredEnvVars = [
@@ -37,6 +38,10 @@ const requiredEnvVars = [
   "WALRUS_AGGREGATOR_URL",
   "WALRUS_PUBLISHER_URL",
   "WALRUS_EPOCHS",
+  "OLLAMA_API_URL",
+  "OLLAMA_MODEL",
+  "QDRANT_URL",
+  "QDRANT_COLLECTION_NAME",
 ];
 
 console.log("🔧 Validating environment variables passed from Rust app...");
@@ -111,6 +116,43 @@ try {
 }
 
 // --- Helper Functions ---
+
+// Initialize services using factory pattern
+let messageProcessor = null;
+
+async function initializeServices() {
+  try {
+    console.log("🔧 Initializing embedding and vector database services...");
+    
+    messageProcessor = ServiceFactory.createMessageProcessor('ollama', 'qdrant', {
+      embedding: {
+        batchSize: parseInt(process.env.EMBEDDING_BATCH_SIZE || '10')
+      },
+      vectorDb: {
+        batchSize: parseInt(process.env.VECTOR_BATCH_SIZE || '100')
+      },
+      processor: {
+        batchSize: parseInt(process.env.PROCESSING_BATCH_SIZE || '50'),
+        storeVectors: process.env.STORE_VECTORS !== 'false',
+        includeEmbeddingsInOutput: process.env.INCLUDE_EMBEDDINGS !== 'false'
+      }
+    });
+
+    const healthCheck = await messageProcessor.healthCheck();
+    console.log("🔍 Service health check:", healthCheck);
+    
+    if (healthCheck.status === 'healthy') {
+      console.log("✅ All services initialized successfully");
+    } else {
+      console.log("⚠️  Some services may have issues, but continuing...");
+    }
+    
+    return messageProcessor;
+  } catch (error) {
+    console.error("❌ Failed to initialize services:", error.message);
+    throw error;
+  }
+}
 
 async function fetchEncryptedFile() {
   const walrus_url = `${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`;
@@ -228,7 +270,7 @@ async function decryptFile(fileObjectId, attestationObjId, encryptedFile) {
   }
 }
 
-function processData(rawData) {
+async function processData(rawData) {
   const refinedData = {
     revision: rawData.revision,
     user: rawData.user,
@@ -238,10 +280,10 @@ function processData(rawData) {
   console.log(`10. Processing data: ${rawData}`);
 
   if (rawData.chats && Array.isArray(rawData.chats)) {
-    rawData.chats.forEach(chat => {
+    for (const chat of rawData.chats) {
       if (chat.contents && Array.isArray(chat.contents)) {
-        chat.contents.forEach(msg => {
-          refinedData.messages.push({
+        for (const msg of chat.contents) {
+          const messageData = {
             id: msg.id,
             from_id: msg.fromId?.userId || null,
             date: msg.date ? new Date(msg.date * 1000).toISOString() : null,
@@ -254,17 +296,32 @@ function processData(rawData) {
                   count: msg.reactions.results?.[0]?.count || null,
                 }
               : null,
-          });
-        });
+          };
+
+          refinedData.messages.push(messageData);
+        }
       }
-    });
+    }
     // Optional: sort by date if you want
     refinedData.messages.sort((a, b) => new Date(a.date) - new Date(b.date));
   }
 
-  console.log(`11. Refined data: ${refinedData}`);
+  console.log(`11. Processing ${refinedData.messages.length} messages with embedding and vector storage...`);
 
-  return refinedData;
+  if (!messageProcessor) {
+    throw new Error("Message processor not initialized");
+  }
+
+  const processedMessages = await messageProcessor.processMessages(refinedData.messages);
+  
+  const stats = messageProcessor.getStats();
+  console.log(`✅ Message processing completed. Stats: ${JSON.stringify(stats)}`);
+  
+  return {
+    ...refinedData,
+    messages: processedMessages,
+    processingStats: stats
+  };
 }
 
 async function encryptFile(refinedData) {
@@ -368,6 +425,8 @@ async function saveEncryptedFileOnChain(encryptedRefinedData, metadata, policyOb
 // --- Main Task Runner ---
 async function runTasks() {
   try {
+    await initializeServices();
+    
     const encryptedFile = await fetchEncryptedFile();
     const encryptedData = new Uint8Array(encryptedFile);
     const encryptedObject = EncryptedObject.parse(encryptedData);
@@ -377,7 +436,7 @@ async function runTasks() {
       attestationObjId,
       encryptedFile
     );
-    const refinedData = processData(decryptedFile);
+    const refinedData = await processData(decryptedFile);
     const encryptedRefinedData = await encryptFile(refinedData);
     const metadata = await publishFile(encryptedRefinedData);
     const onChainFileObjId = await saveEncryptedFileOnChain(
@@ -391,6 +450,7 @@ async function runTasks() {
         attestationObjId,
         onChainFileObjId,
         blobId: metadata.blobId,
+        processingStats: refinedData.processingStats,
       })
     );
     process.exit(0);

@@ -6,3 +6,5 @@ endpoints:
   - fullnode.testnet.sui.io
   - seal-key-server-testnet-1.mystenlabs.com
   - seal-key-server-testnet-2.mystenlabs.com
+  - localhost:11434
+  - localhost:6333
