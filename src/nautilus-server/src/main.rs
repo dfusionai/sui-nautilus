@@ -4,7 +4,7 @@
 use anyhow::Result;
 use axum::{routing::get, routing::post, Router};
 use fastcrypto::{ed25519::Ed25519KeyPair, traits::KeyPair};
-use nautilus_server::app::process_data;
+use nautilus_server::app::{process_data, embedding_ingest};
 use nautilus_server::common::{get_attestation, health_check, get_config};
 use nautilus_server::AppState;
 use std::sync::Arc;
@@ -53,6 +53,7 @@ async fn main() -> Result<()> {
         .route("/", get(ping))
         .route("/get_attestation", get(get_attestation))
         .route("/process_data", post(process_data))
+        .route("/embedding_ingest", post(embedding_ingest))
         .route("/health_check", get(health_check))
         .route("/config", get(get_config))
         .with_state(state)

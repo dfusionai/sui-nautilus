@@ -39,6 +39,21 @@ pub struct TaskRequest {
     pub args: Option<Vec<String>>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EmbeddingIngestRequest {
+    #[serde(rename = "walrusBlobId")]
+    pub walrus_blob_id: String,
+    pub address: String,
+    #[serde(rename = "onChainFileObjId")]
+    pub on_chain_file_obj_id: String,
+    #[serde(rename = "policyObjectId")]
+    pub policy_object_id: String,
+    pub threshold: String,
+    pub timeout_secs: Option<u64>,
+    #[serde(rename = "batchSize")]
+    pub batch_size: Option<u32>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ProcessedData {
     #[serde(rename = "walrusUrl")]
@@ -71,15 +86,13 @@ pub async fn process_data(
     env_vars.insert("WALRUS_EPOCHS".to_string(), state.walrus_epochs_str().to_string());
 
     // Configure task runner
+    let mut args = request.payload.args.unwrap_or_default();
+    args.push(attestation_info.attestation.enclaveId.clone());
+
     let task_config = TaskConfig {
         task_path,
         timeout_secs: request.payload.timeout_secs.unwrap_or(120),
-        args: request.payload.args
-            .map(|mut args| {
-                args.push(attestation_info.attestation.enclaveId.clone());
-                args
-            })
-            .unwrap_or_default(),
+        args,
         env_vars,
     };
     
@@ -101,6 +114,71 @@ pub async fn process_data(
     // // Parse the stdout JSON
     // let data = serde_json::from_str::<ProcessedData>(&task_output.stdout)
     //     .map_err(|e| EnclaveError::GenericError(format!("Failed to parse task output: {}", e)))?;
+
+    Ok(Json(TaskResponse {
+        status: "success".to_string(),
+        data: task_output.stdout,
+        stderr: task_output.stderr,
+        exit_code: task_output.exit_code,
+        execution_time_ms: task_output.execution_time_ms,
+    }))
+}
+
+pub async fn embedding_ingest(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<ProcessDataRequest<EmbeddingIngestRequest>>,
+) -> Result<Json<TaskResponse>, EnclaveError> {
+    // get attestation
+    let attestation_info = get_attestation(State(state.clone())).await?;
+    
+    // Get the absolute path to nodejs-task
+    let current_dir = std::env::current_dir().unwrap();
+    let task_path = current_dir.join("nodejs-task").to_string_lossy().into_owned();
+    
+    // Prepare environment variables from AppState
+    let mut env_vars = std::collections::HashMap::new();
+    env_vars.insert("MOVE_PACKAGE_ID".to_string(), state.move_package_id().to_string());
+    env_vars.insert("SUI_SECRET_KEY".to_string(), state.sui_secret_key().to_string());
+    env_vars.insert("WALRUS_AGGREGATOR_URL".to_string(), state.walrus_aggregator_url().to_string());
+    env_vars.insert("WALRUS_PUBLISHER_URL".to_string(), state.walrus_publisher_url().to_string());
+    env_vars.insert("WALRUS_EPOCHS".to_string(), state.walrus_epochs_str().to_string());
+
+    // Configure task runner for embedding operation
+    let mut args = vec![
+        "--operation".to_string(),
+        "embedding".to_string(),
+        "--walrus-blob-id".to_string(),
+        request.payload.walrus_blob_id.clone(),
+        "--address".to_string(),
+        request.payload.address.clone(),
+        "--on-chain-file-obj-id".to_string(),
+        request.payload.on_chain_file_obj_id.clone(),
+        "--policy-object-id".to_string(),
+        request.payload.policy_object_id.clone(),
+        "--threshold".to_string(),
+        request.payload.threshold.clone(),
+    ];
+
+    // Add batch size if provided
+    if let Some(batch_size) = request.payload.batch_size {
+        args.push("--batch-size".to_string());
+        args.push(batch_size.to_string());
+    }
+
+    args.push(attestation_info.attestation.enclaveId.clone());
+
+    let task_config = TaskConfig {
+        task_path,
+        timeout_secs: request.payload.timeout_secs.unwrap_or(300), // 5 minutes default for embedding
+        args,
+        env_vars,
+    };
+    
+    // Create and run the task
+    let task_runner = NodeTaskRunner::new(task_config);
+    let task_output = task_runner.run().await.map_err(|e| {
+        EnclaveError::GenericError(format!("Failed to execute embedding ingest task: {}", e))
+    })?;
 
     Ok(Json(TaskResponse {
         status: "success".to_string(),
