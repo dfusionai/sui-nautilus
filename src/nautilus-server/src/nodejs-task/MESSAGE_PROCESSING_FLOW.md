@@ -2,12 +2,12 @@
 
 ## Overview
 
-Quy trình xử lý message đã được cập nhật để đảm bảo tính bảo mật và hiệu quả hơn. Thay vì lưu raw message vào vector database, mỗi message sẽ được:
+The message processing workflow has been updated to ensure better security and efficiency. Instead of storing raw messages in the vector database, each message will be:
 
-1. **Encrypt và upload lên Walrus** trước
-2. **Chỉ lưu vector và encryptedObjectId** vào vector database
+1. **Encrypted and uploaded to Walrus** first
+2. **Only store vectors and encryptedObjectId** in the vector database
 
-## Quy trình mới
+## New Workflow
 
 ### 1. Message Processing Pipeline
 
@@ -15,23 +15,23 @@ Quy trình xử lý message đã được cập nhật để đảm bảo tính 
 Raw Messages → Embedding → Seal Encryption → Walrus Upload → Vector Storage
 ```
 
-#### Chi tiết từng bước:
+#### Detailed steps:
 
-1. **Embedding Generation**: Tạo vector embedding cho message text
-2. **Seal Encryption**: Mã hóa message sử dụng Seal operations (cùng pattern với main flow)
-3. **Walrus Upload**: Upload encrypted message lên Walrus, nhận về blobId
-4. **Vector Storage**: Lưu vector + metadata (bao gồm walrus_blob_id) vào vector database
+1. **Embedding Generation**: Generate vector embedding for message text
+2. **Seal Encryption**: Encrypt message using Seal operations (same pattern as main flow)
+3. **Walrus Upload**: Upload encrypted message to Walrus, receive blobId
+4. **Vector Storage**: Store vector + metadata (including walrus_blob_id) in vector database
 
 ### 2. Vector Database Schema
 
-Metadata được lưu trong vector database bao gồm:
+Metadata stored in vector database includes:
 
 ```javascript
 {
   message_id: "message_id",
   from_id: "user_id", 
   date: "2024-01-01T00:00:00Z",
-  walrus_blob_id: "walrus_blob_id", // ID để fetch encrypted message từ Walrus
+  walrus_blob_id: "walrus_blob_id", // ID to fetch encrypted message from Walrus
   walrus_url: "https://walrus.example.com/v1/blobs/blob_id",
   out: true/false,
   reactions: [...],
@@ -41,40 +41,34 @@ Metadata được lưu trong vector database bao gồm:
 
 ### 3. Message Retrieval
 
-Khi cần fetch message content:
+When message content needs to be fetched:
 
-1. **Vector Search**: Tìm kiếm trong vector database
-2. **Extract blobId**: Lấy walrus_blob_id từ search results
-3. **Fetch from Walrus**: Sử dụng blobId để fetch encrypted message từ Walrus
-4. **Parse & Decrypt**: Sử dụng Seal operations để parse và decrypt message (cùng pattern với main flow)
+1. **Vector Search**: Search in vector database
+2. **Extract blobId**: Get walrus_blob_id from search results
+3. **Fetch from Walrus**: Use blobId to fetch encrypted message from Walrus
+4. **Parse & Decrypt**: Use Seal operations to parse and decrypt message (same pattern as main flow)
 
 ## API Changes
 
 ### Updated Methods
 
 #### WalrusOperations
-- `publishFile(encryptedData)`: Upload encrypted data lên Walrus (được sử dụng cho cả file và message)
-- `fetchEncryptedFile(blobId)`: Fetch encrypted data từ Walrus (được sử dụng cho cả file và message)
+- `publishFile(encryptedData)`: Upload encrypted data to Walrus (used for both files and messages)
+- `fetchEncryptedFile(blobId)`: Fetch encrypted data from Walrus (used for both files and messages)
 
-#### processMessagesDirectly()
-- Thêm parameters `sealService` và `policyObjectId`
-- Sử dụng `seal.encryptFile()` để mã hóa message
-- Sử dụng `walrus.publishFile()` để upload encrypted message
-- Cập nhật metadata để chỉ lưu walrus_blob_id thay vì raw message
+#### processMessagesByMessage()
+- Uses `seal.encryptFile()` to encrypt message
+- Uses `walrus.publishFile()` to upload encrypted message
+- Updated metadata to only store walrus_blob_id instead of raw message
+- Implements fail-fast approach - any error stops entire operation
 
 ## Usage Examples
 
-### 1. Processing Messages
+### 1. Processing Messages (Current Implementation)
 
 ```javascript
-const processedData = await processMessagesDirectly(
-  refinedData.messages, 
-  services.embedding, 
-  services.vectorDb,
-  services.blockchain.walrus,
-  services.blockchain.seal,
-  policyObjectId
-);
+// Embedding operation processes messages individually
+const result = await processMessagesByMessage(decryptedData.messages, services, args);
 ```
 
 ### 2. Searching and Fetching Messages
@@ -116,29 +110,33 @@ for (const result of searchResults) {
 
 ## Benefits
 
-1. **Security**: Raw message content không được lưu trong vector database
-2. **Encryption**: Message được mã hóa bằng Seal operations (cùng pattern với main flow)
-3. **Consistency**: Sử dụng cùng encryption/decryption pattern như main flow
-4. **Unified API**: Sử dụng `publishFile` và `fetchEncryptedFile` cho cả file và message
-5. **Privacy**: Message chỉ có thể truy cập và decrypt thông qua proper authentication
-6. **Scalability**: Vector database chỉ lưu metadata nhẹ
-7. **Simplicity**: Loại bỏ MessageUtils layer và custom methods, sử dụng unified API
+1. **Security**: Raw message content is not stored in vector database
+2. **Encryption**: Messages are encrypted using Seal operations (same pattern as main flow)
+3. **Consistency**: Uses same encryption/decryption pattern as main flow
+4. **Unified API**: Uses `publishFile` and `fetchEncryptedFile` for both files and messages
+5. **Privacy**: Messages can only be accessed and decrypted through proper authentication
+6. **Scalability**: Vector database only stores lightweight metadata
+7. **Simplicity**: Eliminated MessageUtils layer and custom methods, uses unified API
+8. **Fail-fast**: Any processing error stops the entire operation, ensuring data consistency
 
 ## Error Handling
 
-- Nếu Walrus upload fail, message sẽ không được lưu vào vector database
-- Stats tracking bao gồm `successfulWalrusUploads` và `failedWalrusUploads`
-- Graceful degradation khi Walrus service unavailable
+- If Walrus upload fails, message will not be stored in vector database
+- If embedding generation fails, entire operation stops
+- If vector storage fails, entire operation stops
+- Stats tracking includes `successfulWalrusUploads` and `failedWalrusUploads`
+- Fail-fast approach ensures all-or-nothing processing
 
 ## Configuration
 
-Các environment variables liên quan:
+Related environment variables:
 
 ```bash
 WALRUS_AGGREGATOR_URL=...
 WALRUS_PUBLISHER_URL=...
 WALRUS_EPOCHS=...
-STORE_VECTORS=true/false
-INCLUDE_EMBEDDINGS=true/false
-PROCESSING_BATCH_SIZE=50
+OLLAMA_API_URL=...
+OLLAMA_MODEL=...
+QDRANT_URL=...
+QDRANT_COLLECTION_NAME=...
 ``` 
