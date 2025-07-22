@@ -174,237 +174,6 @@ async function initializeServices() {
   }
 }
 
-// ========== HELPER FUNCTIONS FOR MESSAGE PROCESSING ==========
-
-function createProcessingStats(totalMessages) {
-  return {
-    totalMessages,
-    successfulEmbeddings: 0,
-    failedEmbeddings: 0,
-    successfulWalrusUploads: 0,
-    failedWalrusUploads: 0,
-    storedVectors: 0,
-    failedVectorStorage: 0
-  };
-}
-
-function getProcessingConfig(options = {}) {
-  return {
-    batchSize: parseInt(options.batchSize || '50'),
-    storeVectors: options.storeVectors !== 'false',
-    includeEmbeddings: options.includeEmbeddings !== 'false'
-  };
-}
-
-function filterMessagesWithText(messages) {
-  return messages.filter(msg => 
-    msg.message && typeof msg.message === 'string' && msg.message.trim().length > 0
-  );
-}
-
-function createFailedProcessingResult(message, error) {
-  return {
-    ...message,
-    embedding: null,
-    vectorStored: false,
-    walrusUploaded: false,
-    processingError: error
-  };
-}
-
-async function uploadMessageToWalrus(message, sealService, walrusService, policyObjectId) {
-  console.log(`📤 Uploading encrypted message ${message.id} to Walrus...`);
-  
-  const encryptedData = await sealService.encryptFile(message, policyObjectId);
-  const walrusMetadata = await walrusService.publishFile(encryptedData);
-  
-  console.log(`✅ Encrypted message ${message.id} uploaded to Walrus with blob ID: ${walrusMetadata.blobId}`);
-  return walrusMetadata;
-}
-
-function createVectorStoreItem(message, embedding, walrusMetadata) {
-  return {
-    id: message.id,
-    vector: embedding,
-    metadata: {
-      message_id: message.id,
-      from_id: message.from_id,
-      date: message.date,
-      walrus_blob_id: walrusMetadata.blobId,
-      walrus_url: walrusMetadata.walrusUrl,
-      out: message.out,
-      reactions: message.reactions,
-      processed_at: new Date().toISOString()
-    }
-  };
-}
-
-async function processMessageEmbedding(message, embeddingResult, config, services, policyObjectId, stats) {
-  if (!embeddingResult.success) {
-    stats.failedEmbeddings++;
-    return createFailedProcessingResult(message, embeddingResult.error || 'Unknown embedding error');
-  }
-
-  stats.successfulEmbeddings++;
-  
-  const processedMessage = {
-    ...message,
-    embedding: config.includeEmbeddings ? embeddingResult.embedding : null,
-    vectorStored: false,
-    walrusUploaded: false,
-    embeddingDimensions: embeddingResult.embedding.length
-  };
-
-  // Upload to Walrus
-  try {
-    const walrusMetadata = await uploadMessageToWalrus(
-      message, 
-      services.sealService, 
-      services.walrusService, 
-      policyObjectId
-    );
-    
-    processedMessage.walrusUploaded = true;
-    processedMessage.walrusBlobId = walrusMetadata.blobId;
-    processedMessage.walrusUrl = walrusMetadata.walrusUrl;
-    stats.successfulWalrusUploads++;
-
-    return {
-      processedMessage,
-      vectorToStore: config.storeVectors ? 
-        createVectorStoreItem(message, embeddingResult.embedding, walrusMetadata) : null
-    };
-    
-  } catch (error) {
-    console.error(`❌ Failed to upload encrypted message ${message.id} to Walrus: ${error.message}`);
-    processedMessage.walrusUploaded = false;
-    processedMessage.walrusUploadError = error.message;
-    stats.failedWalrusUploads++;
-    
-    return { processedMessage, vectorToStore: null };
-  }
-}
-
-async function storeVectorBatch(vectors, vectorDbService, results, stats) {
-  if (vectors.length === 0) return;
-
-  try {
-    console.log(`📊 Storing ${vectors.length} vectors in vector database...`);
-    const storeResults = await vectorDbService.storeBatch(vectors);
-    
-    storeResults.forEach(storeResult => {
-      const messageIndex = results.findIndex(msg => msg.id.toString() === storeResult.id);
-      
-      if (messageIndex !== -1) {
-        if (storeResult.success) {
-          results[messageIndex].vectorStored = true;
-          stats.storedVectors++;
-        } else {
-          results[messageIndex].vectorStored = false;
-          results[messageIndex].vectorStorageError = storeResult.error || 'Unknown storage error';
-          stats.failedVectorStorage++;
-        }
-      }
-    });
-  } catch (error) {
-    console.error(`❌ Failed to store vectors: ${error.message}`);
-    stats.failedVectorStorage += vectors.length;
-  }
-}
-
-async function processBatch(batch, batchNum, totalBatches, services, config, policyObjectId, stats) {
-  console.log(`📦 Processing batch ${batchNum}/${totalBatches} (${batch.length} messages)`);
-  
-  const messagesWithText = filterMessagesWithText(batch);
-
-  if (messagesWithText.length === 0) {
-    console.log('⚠️  No messages with text content in this batch');
-    return batch.map(msg => createFailedProcessingResult(msg, 'No text content'));
-  }
-
-  // Generate embeddings for batch
-  const embeddingResults = await services.embeddingService.embedBatch(
-    messagesWithText.map(msg => msg.message)
-  );
-
-  const results = [];
-  const vectorsToStore = [];
-  
-  // Process each message in the batch
-  for (let j = 0; j < batch.length; j++) {
-    const originalMessage = batch[j];
-    const messageWithTextIndex = messagesWithText.findIndex(msg => msg.id === originalMessage.id);
-    
-    if (messageWithTextIndex === -1) {
-      results.push(createFailedProcessingResult(originalMessage, 'No text content'));
-      continue;
-    }
-
-    const embeddingResult = embeddingResults[messageWithTextIndex];
-    const processResult = await processMessageEmbedding(
-      originalMessage, 
-      embeddingResult, 
-      config, 
-      services, 
-      policyObjectId, 
-      stats
-    );
-
-    results.push(processResult.processedMessage);
-    
-    if (processResult.vectorToStore) {
-      vectorsToStore.push(processResult.vectorToStore);
-    }
-  }
-
-  // Store vectors for this batch
-  if (config.storeVectors) {
-    await storeVectorBatch(vectorsToStore, services.vectorDbService, results, stats);
-  }
-
-  return results;
-}
-
-// ========== MAIN FUNCTION ==========
-
-async function processMessagesDirectly(messages, embeddingService, vectorDbService, walrusService, sealService, policyObjectId, configOptions = {}) {
-  if (!Array.isArray(messages) || messages.length === 0) {
-    console.log('⚠️  No messages to process');
-    return { messages: [], stats: createProcessingStats(0) };
-  }
-
-  console.log(`🔄 Starting direct message processing for ${messages.length} messages`);
-  
-  const config = getProcessingConfig(configOptions);
-  const stats = createProcessingStats(messages.length);
-  const services = { embeddingService, vectorDbService, walrusService, sealService };
-
-  // Connect to vector database if needed
-  if (config.storeVectors && !vectorDbService.isConnected()) {
-    await vectorDbService.connect();
-  }
-
-  const allResults = [];
-
-  // Process messages in batches
-  for (let i = 0; i < messages.length; i += config.batchSize) {
-    const batch = messages.slice(i, i + config.batchSize);
-    const batchNum = Math.floor(i / config.batchSize) + 1;
-    const totalBatches = Math.ceil(messages.length / config.batchSize);
-    
-    const batchResults = await processBatch(batch, batchNum, totalBatches, services, config, policyObjectId, stats);
-    allResults.push(...batchResults);
-
-    // Small delay between batches
-    if (i + config.batchSize < messages.length) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-  }
-
-  console.log(`✅ Direct message processing completed. Stats:`, stats);
-  return { messages: allResults, stats };
-}
-
 // --- Main Task Runner ---
 async function runTasks() {
   try {
@@ -461,9 +230,15 @@ async function runEmbeddingOperation() {
   console.log("🔤 Step 5: Processing messages individually with embeddings...");
   const result = await processMessagesByMessage(decryptedData.messages, services, parsedArgs);
   
-  console.log("✅ Embedding operation completed successfully!");
-  console.log(JSON.stringify(result, null, 2));
-  process.exit(0);
+  if (result.status === "failed") {
+    console.error("❌ Embedding operation failed!");
+    console.error(JSON.stringify(result, null, 2));
+    process.exit(1); // Exit with error code to indicate failure
+  } else {
+    console.log("✅ Embedding operation completed successfully!");
+    console.log(JSON.stringify(result, null, 2));
+    process.exit(0);
+  }
 }
 
 async function processMessagesByMessage(messages, services, args) {
@@ -519,76 +294,109 @@ async function processMessagesByMessage(messages, services, args) {
       batch.map(msg => msg.message)
     );
 
-    // Process each message in the batch
+    // Check if any embeddings failed - FAIL FAST approach
+    for (let j = 0; j < embeddingResults.length; j++) {
+      const embeddingResult = embeddingResults[j];
+      const message = batch[j];
+      
+      if (!embeddingResult.success) {
+        const error = `Failed to generate embedding for message ${message.id}: ${embeddingResult.error || 'Unknown error'}`;
+        console.error(`💥 EMBEDDING FAILURE - STOPPING PROCESSING: ${error}`);
+        
+        return {
+          status: "failed",
+          operation: "embedding",
+          processedCount: 0,
+          failureReason: "embedding_generation_failed",
+          failedMessage: message.id,
+          error: error,
+          totalMessages: validMessages.length,
+          processedSoFar: stats.successfulEmbeddings
+        };
+      }
+    }
+
+    // All embeddings successful - process each message
     for (let j = 0; j < batch.length; j++) {
       const message = batch[j];
       const embeddingResult = embeddingResults[j];
       
       try {
-        if (embeddingResult.success) {
-          stats.successfulEmbeddings++;
-          
-          console.log(`🔤 Processing message ${message.id}: generating embedding...`);
-          
-          // Step 1: Encrypt individual message
-          console.log(`🔒 Encrypting message ${message.id}...`);
-          const encryptedMessage = await services.blockchain.seal.encryptFile(message, args.policyObjectId);
-          
-          // Step 2: Upload encrypted message to Walrus
-          console.log(`📤 Uploading encrypted message ${message.id} to Walrus...`);
-          const walrusMetadata = await services.blockchain.walrus.publishFile(encryptedMessage);
-          stats.successfulWalrusUploads++;
-          
-          console.log(`✅ Message ${message.id} uploaded to Walrus with blob ID: ${walrusMetadata.blobId}`);
-          
-          // Step 3: Store vector + blob ID in vector database
-          console.log(`💾 Storing vector for message ${message.id} in vector database...`);
-          const vectorData = {
-            id: message.id,
-            vector: embeddingResult.embedding,
-            metadata: {
-              message_id: message.id,
-              from_id: message.from_id,
-              date: message.date,
-              walrus_blob_id: walrusMetadata.blobId,
-              walrus_url: walrusMetadata.walrusUrl,
-              out: message.out,
-              reactions: message.reactions,
-              processed_at: new Date().toISOString(),
-              embedding_dimensions: embeddingResult.embedding.length
-            }
-          };
-          
-          const storeResult = await services.vectorDb.storeBatch([vectorData]);
-          if (storeResult[0] && storeResult[0].success) {
-            stats.successfulVectorStorages++;
-            console.log(`✅ Vector for message ${message.id} stored in vector database`);
-          } else {
-            stats.failedVectorStorages++;
-            const error = `Failed to store vector for message ${message.id}: ${storeResult[0]?.error || 'Unknown error'}`;
-            console.error(`❌ ${error}`);
-            stats.errors.push(error);
+        stats.successfulEmbeddings++;
+        
+        console.log(`🔤 Processing message ${message.id}: embedding successful, processing...`);
+        
+        // Step 1: Encrypt individual message
+        console.log(`🔒 Encrypting message ${message.id}...`);
+        const encryptedMessage = await services.blockchain.seal.encryptFile(message, args.policyObjectId);
+        
+        // Step 2: Upload encrypted message to Walrus
+        console.log(`📤 Uploading encrypted message ${message.id} to Walrus...`);
+        const walrusMetadata = await services.blockchain.walrus.publishFile(encryptedMessage);
+        stats.successfulWalrusUploads++;
+        
+        console.log(`✅ Message ${message.id} uploaded to Walrus with blob ID: ${walrusMetadata.blobId}`);
+        
+        // Step 3: Store vector + blob ID in vector database
+        console.log(`💾 Storing vector for message ${message.id} in vector database...`);
+        const vectorData = {
+          id: message.id,
+          vector: embeddingResult.embedding,
+          metadata: {
+            message_id: message.id,
+            from_id: message.from_id,
+            date: message.date,
+            walrus_blob_id: walrusMetadata.blobId,
+            walrus_url: walrusMetadata.walrusUrl,
+            out: message.out,
+            reactions: message.reactions,
+            processed_at: new Date().toISOString(),
+            embedding_dimensions: embeddingResult.embedding.length
           }
-          
+        };
+        
+        const storeResult = await services.vectorDb.storeBatch([vectorData]);
+        if (storeResult[0] && storeResult[0].success) {
+          stats.successfulVectorStorages++;
+          console.log(`✅ Vector for message ${message.id} stored in vector database`);
         } else {
-          stats.failedEmbeddings++;
-          const error = `Failed to generate embedding for message ${message.id}: ${embeddingResult.error || 'Unknown error'}`;
-          console.error(`❌ ${error}`);
-          stats.errors.push(error);
+          // Vector storage failure should also fail the entire operation
+          const error = `Failed to store vector for message ${message.id}: ${storeResult[0]?.error || 'Unknown error'}`;
+          console.error(`💥 VECTOR STORAGE FAILURE - STOPPING PROCESSING: ${error}`);
+          
+          return {
+            status: "failed",
+            operation: "embedding",
+            processedCount: 0,
+            failureReason: "vector_storage_failed",
+            failedMessage: message.id,
+            error: error,
+            totalMessages: validMessages.length,
+            processedSoFar: stats.successfulEmbeddings
+          };
         }
         
       } catch (error) {
         const errorMsg = `Error processing message ${message.id}: ${error.message}`;
-        console.error(`❌ ${errorMsg}`);
-        stats.errors.push(errorMsg);
+        console.error(`💥 PROCESSING FAILURE - STOPPING PROCESSING: ${errorMsg}`);
         
+        let failureReason = "processing_error";
         if (error.message.includes('Walrus')) {
-          stats.failedWalrusUploads++;
-        } else if (error.message.includes('vector')) {
-          stats.failedVectorStorages++;
-        } else {
-          stats.failedEmbeddings++;
+          failureReason = "walrus_upload_failed";
+        } else if (error.message.includes('encrypt')) {
+          failureReason = "encryption_failed";
         }
+        
+        return {
+          status: "failed",
+          operation: "embedding",
+          processedCount: 0,
+          failureReason: failureReason,
+          failedMessage: message.id,
+          error: errorMsg,
+          totalMessages: validMessages.length,
+          processedSoFar: stats.successfulEmbeddings
+        };
       }
     }
 
@@ -598,21 +406,20 @@ async function processMessagesByMessage(messages, services, args) {
     }
   }
 
+  // If we reach here, all messages were processed successfully
   const result = {
     status: "success",
     operation: "embedding",
     processedCount: validMessages.length,
+    totalMessages: validMessages.length,
     successfulEmbeddings: stats.successfulEmbeddings,
-    failedEmbeddings: stats.failedEmbeddings,
     successfulWalrusUploads: stats.successfulWalrusUploads,
-    failedWalrusUploads: stats.failedWalrusUploads,
     successfulVectorStorages: stats.successfulVectorStorages,
-    failedVectorStorages: stats.failedVectorStorages,
-    errorCount: stats.errors.length,
-    errors: stats.errors.slice(0, 10) // Include first 10 errors
+    message: "All messages processed successfully"
   };
 
-  console.log(`✅ Message-by-message processing completed. Stats:`, result);
+  console.log(`✅ All ${validMessages.length} messages processed successfully!`);
+  console.log(`📊 Final Stats: ${stats.successfulEmbeddings} embeddings, ${stats.successfulWalrusUploads} uploads, ${stats.successfulVectorStorages} vectors stored`);
   return result;
 }
 
