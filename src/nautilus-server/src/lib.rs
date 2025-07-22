@@ -25,6 +25,19 @@ pub struct AppState {
     pub walrus_aggregator_url: String,
     pub walrus_publisher_url: String,
     pub walrus_epochs: String,
+    
+    /// Ollama embedding service configuration
+    pub ollama_api_url: String,
+    pub ollama_model: String,
+    
+    /// Qdrant vector database configuration
+    pub qdrant_url: String,
+    pub qdrant_api_key: Option<String>,
+    pub qdrant_collection_name: String,
+    
+    /// Task processing configuration
+    pub embedding_batch_size: String,
+    pub vector_batch_size: String,
 }
 
 impl AppState {
@@ -58,6 +71,51 @@ impl AppState {
         self.walrus_epochs.parse()
     }
 
+    /// Get Ollama API URL
+    pub fn ollama_api_url(&self) -> &str {
+        &self.ollama_api_url
+    }
+
+    /// Get Ollama model
+    pub fn ollama_model(&self) -> &str {
+        &self.ollama_model
+    }
+
+    /// Get Qdrant URL
+    pub fn qdrant_url(&self) -> &str {
+        &self.qdrant_url
+    }
+
+    /// Get Qdrant API key
+    pub fn qdrant_api_key(&self) -> Option<&str> {
+        self.qdrant_api_key.as_deref()
+    }
+
+    /// Get Qdrant collection name
+    pub fn qdrant_collection_name(&self) -> &str {
+        &self.qdrant_collection_name
+    }
+
+    /// Get embedding batch size as string
+    pub fn embedding_batch_size_str(&self) -> &str {
+        &self.embedding_batch_size
+    }
+
+    /// Get embedding batch size as number
+    pub fn embedding_batch_size(&self) -> Result<u32, std::num::ParseIntError> {
+        self.embedding_batch_size.parse()
+    }
+
+    /// Get vector batch size as string
+    pub fn vector_batch_size_str(&self) -> &str {
+        &self.vector_batch_size
+    }
+
+    /// Get vector batch size as number
+    pub fn vector_batch_size(&self) -> Result<u32, std::num::ParseIntError> {
+        self.vector_batch_size.parse()
+    }
+
     /// Check if all required environment variables are properly configured
     pub fn validate_config(&self) -> Result<(), String> {
         if self.move_package_id.is_empty() {
@@ -75,9 +133,29 @@ impl AppState {
         if self.walrus_epochs.is_empty() {
             return Err("WALRUS_EPOCHS is empty".to_string());
         }
+        if self.ollama_api_url.is_empty() {
+            return Err("OLLAMA_API_URL is empty".to_string());
+        }
+        if self.ollama_model.is_empty() {
+            return Err("OLLAMA_MODEL is empty".to_string());
+        }
+        if self.qdrant_url.is_empty() {
+            return Err("QDRANT_URL is empty".to_string());
+        }
+        if self.qdrant_collection_name.is_empty() {
+            return Err("QDRANT_COLLECTION_NAME is empty".to_string());
+        }
+        if self.embedding_batch_size.is_empty() {
+            return Err("EMBEDDING_BATCH_SIZE is empty".to_string());
+        }
+        if self.vector_batch_size.is_empty() {
+            return Err("VECTOR_BATCH_SIZE is empty".to_string());
+        }
         
-        // Validate that epochs is a valid number
+        // Validate that numeric values are valid
         self.walrus_epochs().map_err(|_| "WALRUS_EPOCHS must be a valid number".to_string())?;
+        self.embedding_batch_size().map_err(|_| "EMBEDDING_BATCH_SIZE must be a valid number".to_string())?;
+        self.vector_batch_size().map_err(|_| "VECTOR_BATCH_SIZE must be a valid number".to_string())?;
         
         Ok(())
     }

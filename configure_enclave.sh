@@ -59,7 +59,10 @@ ENV_VARIABLES=(
     "OLLAMA_API_URL"
     "OLLAMA_MODEL"
     "QDRANT_URL"
+    "QDRANT_API_KEY"
     "QDRANT_COLLECTION_NAME"
+    "EMBEDDING_BATCH_SIZE"
+    "VECTOR_BATCH_SIZE"
 )
 
 ############################
@@ -180,8 +183,21 @@ if [[ "$USE_SECRET" =~ ^[Yy]$ ]]; then
                     echo "Examples: http://localhost:6333 or https://your-qdrant-service.yourdomain.com"
                     read -p "Enter $env_var: " value
                     ;;
+                "QDRANT_API_KEY")
+                    echo "Optional: API key for Qdrant authentication (leave empty if not needed)"
+                    read -s -p "Enter $env_var (optional): " value
+                    echo ""
+                    ;;
                 "QDRANT_COLLECTION_NAME")
                     echo "Examples: nautilus_messages, chat_embeddings"
+                    read -p "Enter $env_var: " value
+                    ;;
+                "EMBEDDING_BATCH_SIZE")
+                    echo "Batch size for embedding processing (default: 10)"
+                    read -p "Enter $env_var: " value
+                    ;;
+                "VECTOR_BATCH_SIZE")
+                    echo "Batch size for vector operations (default: 100)"
                     read -p "Enter $env_var: " value
                     ;;
                 *)

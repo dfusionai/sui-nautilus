@@ -79,11 +79,28 @@ pub async fn process_data(
     
     // Prepare environment variables from AppState
     let mut env_vars = std::collections::HashMap::new();
+    
+    // Core blockchain configuration
     env_vars.insert("MOVE_PACKAGE_ID".to_string(), state.move_package_id().to_string());
     env_vars.insert("SUI_SECRET_KEY".to_string(), state.sui_secret_key().to_string());
     env_vars.insert("WALRUS_AGGREGATOR_URL".to_string(), state.walrus_aggregator_url().to_string());
     env_vars.insert("WALRUS_PUBLISHER_URL".to_string(), state.walrus_publisher_url().to_string());
     env_vars.insert("WALRUS_EPOCHS".to_string(), state.walrus_epochs_str().to_string());
+    
+    // Ollama embedding service configuration
+    env_vars.insert("OLLAMA_API_URL".to_string(), state.ollama_api_url().to_string());
+    env_vars.insert("OLLAMA_MODEL".to_string(), state.ollama_model().to_string());
+    
+    // Qdrant vector database configuration
+    env_vars.insert("QDRANT_URL".to_string(), state.qdrant_url().to_string());
+    env_vars.insert("QDRANT_COLLECTION_NAME".to_string(), state.qdrant_collection_name().to_string());
+    if let Some(api_key) = state.qdrant_api_key() {
+        env_vars.insert("QDRANT_API_KEY".to_string(), api_key.to_string());
+    }
+    
+    // Task processing configuration
+    env_vars.insert("EMBEDDING_BATCH_SIZE".to_string(), state.embedding_batch_size_str().to_string());
+    env_vars.insert("VECTOR_BATCH_SIZE".to_string(), state.vector_batch_size_str().to_string());
 
     // Configure task runner
     let mut args = request.payload.args.unwrap_or_default();
@@ -137,11 +154,28 @@ pub async fn embedding_ingest(
     
     // Prepare environment variables from AppState
     let mut env_vars = std::collections::HashMap::new();
+    
+    // Core blockchain configuration
     env_vars.insert("MOVE_PACKAGE_ID".to_string(), state.move_package_id().to_string());
     env_vars.insert("SUI_SECRET_KEY".to_string(), state.sui_secret_key().to_string());
     env_vars.insert("WALRUS_AGGREGATOR_URL".to_string(), state.walrus_aggregator_url().to_string());
     env_vars.insert("WALRUS_PUBLISHER_URL".to_string(), state.walrus_publisher_url().to_string());
     env_vars.insert("WALRUS_EPOCHS".to_string(), state.walrus_epochs_str().to_string());
+    
+    // Ollama embedding service configuration
+    env_vars.insert("OLLAMA_API_URL".to_string(), state.ollama_api_url().to_string());
+    env_vars.insert("OLLAMA_MODEL".to_string(), state.ollama_model().to_string());
+    
+    // Qdrant vector database configuration
+    env_vars.insert("QDRANT_URL".to_string(), state.qdrant_url().to_string());
+    env_vars.insert("QDRANT_COLLECTION_NAME".to_string(), state.qdrant_collection_name().to_string());
+    if let Some(api_key) = state.qdrant_api_key() {
+        env_vars.insert("QDRANT_API_KEY".to_string(), api_key.to_string());
+    }
+    
+    // Task processing configuration
+    env_vars.insert("EMBEDDING_BATCH_SIZE".to_string(), state.embedding_batch_size_str().to_string());
+    env_vars.insert("VECTOR_BATCH_SIZE".to_string(), state.vector_batch_size_str().to_string());
 
     // Configure task runner for embedding operation
     let mut args = vec![

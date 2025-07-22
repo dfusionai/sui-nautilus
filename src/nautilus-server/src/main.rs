@@ -22,6 +22,19 @@ async fn main() -> Result<()> {
     let walrus_aggregator_url = std::env::var("WALRUS_AGGREGATOR_URL").expect("WALRUS_AGGREGATOR_URL must be set");
     let walrus_publisher_url = std::env::var("WALRUS_PUBLISHER_URL").expect("WALRUS_PUBLISHER_URL must be set");
     let walrus_epochs = std::env::var("WALRUS_EPOCHS").expect("WALRUS_EPOCHS must be set");
+    
+    // Load Ollama embedding service configuration
+    let ollama_api_url = std::env::var("OLLAMA_API_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let ollama_model = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "nomic-embed-text".to_string());
+    
+    // Load Qdrant vector database configuration
+    let qdrant_url = std::env::var("QDRANT_URL").unwrap_or_else(|_| "http://localhost:6333".to_string());
+    let qdrant_api_key = std::env::var("QDRANT_API_KEY").ok(); // Optional
+    let qdrant_collection_name = std::env::var("QDRANT_COLLECTION_NAME").unwrap_or_else(|_| "messages".to_string());
+    
+    // Load task processing configuration
+    let embedding_batch_size = std::env::var("EMBEDDING_BATCH_SIZE").unwrap_or_else(|_| "10".to_string());
+    let vector_batch_size = std::env::var("VECTOR_BATCH_SIZE").unwrap_or_else(|_| "100".to_string());
 
     // Log loaded configuration (without sensitive values)
     info!("Loading Nautilus server configuration:");
@@ -29,7 +42,14 @@ async fn main() -> Result<()> {
     info!("  WALRUS_AGGREGATOR_URL: {}", walrus_aggregator_url);
     info!("  WALRUS_PUBLISHER_URL: {}", walrus_publisher_url);
     info!("  WALRUS_EPOCHS: {}", walrus_epochs);
+    info!("  OLLAMA_API_URL: {}", ollama_api_url);
+    info!("  OLLAMA_MODEL: {}", ollama_model);
+    info!("  QDRANT_URL: {}", qdrant_url);
+    info!("  QDRANT_COLLECTION_NAME: {}", qdrant_collection_name);
+    info!("  EMBEDDING_BATCH_SIZE: {}", embedding_batch_size);
+    info!("  VECTOR_BATCH_SIZE: {}", vector_batch_size);
     info!("  SUI_SECRET_KEY: ****** (hidden)");
+    info!("  QDRANT_API_KEY: {}", if qdrant_api_key.is_some() { "****** (hidden)" } else { "not set" });
 
     let state = Arc::new(AppState { 
         eph_kp, 
@@ -38,6 +58,13 @@ async fn main() -> Result<()> {
         walrus_aggregator_url,
         walrus_publisher_url,
         walrus_epochs,
+        ollama_api_url,
+        ollama_model,
+        qdrant_url,
+        qdrant_api_key,
+        qdrant_collection_name,
+        embedding_batch_size,
+        vector_batch_size,
     });
 
     // Validate configuration before starting server
