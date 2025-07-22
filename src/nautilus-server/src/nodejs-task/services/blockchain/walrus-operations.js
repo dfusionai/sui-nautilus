@@ -38,6 +38,8 @@ class WalrusOperations {
     }
   }
 
+
+
   async publishFile(encryptedData) {
     const uploadUrl = `${this.publisherUrl}/v1/blobs?epochs=${this.epochs}`;
     
@@ -83,6 +85,8 @@ class WalrusOperations {
       throw new Error(`publishFile failed: ${err.message}`);
     }
   }
+
+
 
   async getStorageInfo() {
     try {

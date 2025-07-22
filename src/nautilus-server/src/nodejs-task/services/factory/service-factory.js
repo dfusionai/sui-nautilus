@@ -92,6 +92,8 @@ class ServiceFactory {
     };
   }
 
+
+
   static getAvailableServices() {
     return {
       embedding: Object.keys(config.embedding.providers),

@@ -105,7 +105,7 @@ async function initializeServices() {
   }
 }
 
-async function processMessagesDirectly(messages, embeddingService, vectorDbService) {
+async function processMessagesDirectly(messages, embeddingService, vectorDbService, walrusService, sealService, policyObjectId) {
   if (!Array.isArray(messages) || messages.length === 0) {
     console.log('⚠️  No messages to process');
     return [];
@@ -122,6 +122,8 @@ async function processMessagesDirectly(messages, embeddingService, vectorDbServi
     totalMessages: messages.length,
     successfulEmbeddings: 0,
     failedEmbeddings: 0,
+    successfulWalrusUploads: 0,
+    failedWalrusUploads: 0,
     storedVectors: 0,
     failedVectorStorage: 0
   };
@@ -148,6 +150,7 @@ async function processMessagesDirectly(messages, embeddingService, vectorDbServi
         ...msg,
         embedding: null,
         vectorStored: false,
+        walrusUploaded: false,
         processingError: 'No text content'
       })));
       continue;
@@ -170,6 +173,7 @@ async function processMessagesDirectly(messages, embeddingService, vectorDbServi
           ...originalMessage,
           embedding: null,
           vectorStored: false,
+          walrusUploaded: false,
           processingError: 'No text content'
         });
         continue;
@@ -184,10 +188,34 @@ async function processMessagesDirectly(messages, embeddingService, vectorDbServi
           ...originalMessage,
           embedding: includeEmbeddings ? embeddingResult.embedding : null,
           vectorStored: false,
+          walrusUploaded: false,
           embeddingDimensions: embeddingResult.embedding.length
         };
 
-        if (storeVectors) {
+        // Upload encrypted message to Walrus
+        try {
+          console.log(`📤 Uploading encrypted message ${originalMessage.id} to Walrus...`);
+          
+          // Encrypt message using Seal operations (same pattern as main flow)
+          const encryptedData = await sealService.encryptFile(originalMessage, policyObjectId);
+          
+          // Publish encrypted data to Walrus
+          const walrusMetadata = await walrusService.publishFile(encryptedData);
+          
+          processedMessage.walrusUploaded = true;
+          processedMessage.walrusBlobId = walrusMetadata.blobId;
+          processedMessage.walrusUrl = walrusMetadata.walrusUrl;
+          stats.successfulWalrusUploads++;
+          
+          console.log(`✅ Encrypted message ${originalMessage.id} uploaded to Walrus with blob ID: ${walrusMetadata.blobId}`);
+        } catch (error) {
+          console.error(`❌ Failed to upload encrypted message ${originalMessage.id} to Walrus: ${error.message}`);
+          processedMessage.walrusUploaded = false;
+          processedMessage.walrusUploadError = error.message;
+          stats.failedWalrusUploads++;
+        }
+
+        if (storeVectors && processedMessage.walrusUploaded) {
           vectorsToStore.push({
             id: originalMessage.id,
             vector: embeddingResult.embedding,
@@ -195,7 +223,8 @@ async function processMessagesDirectly(messages, embeddingService, vectorDbServi
               message_id: originalMessage.id,
               from_id: originalMessage.from_id,
               date: originalMessage.date,
-              message_text: originalMessage.message,
+              walrus_blob_id: processedMessage.walrusBlobId,
+              walrus_url: processedMessage.walrusUrl,
               out: originalMessage.out,
               reactions: originalMessage.reactions,
               processed_at: new Date().toISOString()
@@ -210,6 +239,7 @@ async function processMessagesDirectly(messages, embeddingService, vectorDbServi
           ...originalMessage,
           embedding: null,
           vectorStored: false,
+          walrusUploaded: false,
           processingError: embeddingResult.error || 'Unknown embedding error'
         });
       }
@@ -298,7 +328,10 @@ async function runTasks() {
     const processedData = await processMessagesDirectly(
       refinedData.messages, 
       services.embedding, 
-      services.vectorDb
+      services.vectorDb,
+      services.blockchain.walrus,
+      services.blockchain.seal,
+      policyObjectId
     );
     
     // Step 7: Encrypt refined data

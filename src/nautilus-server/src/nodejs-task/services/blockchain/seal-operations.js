@@ -104,6 +104,8 @@ class SealOperations {
     }
   }
 
+
+
   parseEncryptedObject(encryptedFile) {
     try {
       const encryptedData = new Uint8Array(encryptedFile);
