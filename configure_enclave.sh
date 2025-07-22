@@ -56,6 +56,10 @@ ENV_VARIABLES=(
     "WALRUS_AGGREGATOR_URL"
     "WALRUS_PUBLISHER_URL"
     "WALRUS_EPOCHS"
+    "OLLAMA_API_URL"
+    "OLLAMA_MODEL"
+    "QDRANT_URL"
+    "QDRANT_COLLECTION_NAME"
 )
 
 ############################
@@ -157,14 +161,33 @@ if [[ "$USE_SECRET" =~ ^[Yy]$ ]]; then
         # Create temporary file to store environment variables
         TEMP_ENV_FILE="/tmp/env_values_$$"
         
-        # Collect all environment variables
+        # Collect all environment variables with examples for external services
         for env_var in "${ENV_VARIABLES[@]}"; do
-            if [ "$env_var" = "SUI_SECRET_KEY" ]; then
-                read -s -p "Enter $env_var: " value
-                echo ""
-            else
-                read -p "Enter $env_var: " value
-            fi
+            case "$env_var" in
+                "SUI_SECRET_KEY")
+                    read -s -p "Enter $env_var: " value
+                    echo ""
+                    ;;
+                "OLLAMA_API_URL")
+                    echo "Examples: http://localhost:11434 or https://your-ollama-service.yourdomain.com"
+                    read -p "Enter $env_var: " value
+                    ;;
+                "OLLAMA_MODEL")
+                    echo "Examples: nomic-embed-text, all-minilm, sentence-transformers"
+                    read -p "Enter $env_var: " value
+                    ;;
+                "QDRANT_URL")
+                    echo "Examples: http://localhost:6333 or https://your-qdrant-service.yourdomain.com"
+                    read -p "Enter $env_var: " value
+                    ;;
+                "QDRANT_COLLECTION_NAME")
+                    echo "Examples: nautilus_messages, chat_embeddings"
+                    read -p "Enter $env_var: " value
+                    ;;
+                *)
+                    read -p "Enter $env_var: " value
+                    ;;
+            esac
             echo "$env_var=$value" >> "$TEMP_ENV_FILE"
         done
         
