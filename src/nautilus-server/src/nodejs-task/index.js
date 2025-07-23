@@ -157,15 +157,14 @@ if (operation === 'embedding') {
   console.log(`  Limit: ${processingConfig.limit}`);
   
 } else if (operation === 'retrieve-by-blob-ids') {
-  // Retrieve by blob IDs operation: --operation retrieve-by-blob-ids --blob-file-pairs <jsonString> --address <address> --policy-object-id <policyId> --threshold <threshold> <enclaveId>
+  // Retrieve by blob IDs operation: --operation retrieve-by-blob-ids --blob-file-pairs <jsonString> --address <address> --threshold <threshold> <enclaveId>
   const blobFilePairsIndex = args.indexOf('--blob-file-pairs');
   const addressIndex = args.indexOf('--address');
-  const policyObjectIdIndex = args.indexOf('--policy-object-id');
   const thresholdIndex = args.indexOf('--threshold');
   
   if (blobFilePairsIndex === -1 || addressIndex === -1 || 
-      policyObjectIdIndex === -1 || thresholdIndex === -1 || args.length < 10) {
-    console.error("Usage for retrieve-by-blob-ids: node index.js --operation retrieve-by-blob-ids --blob-file-pairs <jsonString> --address <address> --policy-object-id <policyId> --threshold <threshold> <enclaveId>");
+      thresholdIndex === -1 || args.length < 8) {
+    console.error("Usage for retrieve-by-blob-ids: node index.js --operation retrieve-by-blob-ids --blob-file-pairs <jsonString> --address <address> --threshold <threshold> <enclaveId>");
     process.exit(1);
   }
 
@@ -187,8 +186,8 @@ if (operation === 'embedding') {
   // Validate blob file pairs structure
   for (let i = 0; i < blobFilePairs.length; i++) {
     const pair = blobFilePairs[i];
-    if (!pair.walrusBlobId || !pair.onChainFileObjId) {
-      console.error(`❌ Invalid blob file pair at index ${i}: missing walrusBlobId or onChainFileObjId`);
+    if (!pair.walrusBlobId || !pair.onChainFileObjId || !pair.policyObjectId) {
+      console.error(`❌ Invalid blob file pair at index ${i}: missing walrusBlobId, onChainFileObjId, or policyObjectId`);
       process.exit(1);
     }
   }
@@ -197,7 +196,6 @@ if (operation === 'embedding') {
     operation: 'retrieve-by-blob-ids',
     blobFilePairs: blobFilePairs,
     address: args[addressIndex + 1],
-    policyObjectId: args[policyObjectIdIndex + 1],
     threshold: args[thresholdIndex + 1],
     enclaveId: args[args.length - 1], // Last argument is enclaveId
     processingConfig: {},
@@ -206,10 +204,9 @@ if (operation === 'embedding') {
   console.log("📋 Retrieve by Blob IDs Operation Arguments:");
   console.log(`  Blob File Pairs: ${blobFilePairs.length} pairs`);
   blobFilePairs.forEach((pair, index) => {
-    console.log(`    ${index + 1}. Blob ID: ${pair.walrusBlobId}, File ID: ${pair.onChainFileObjId}`);
+    console.log(`    ${index + 1}. Blob ID: ${pair.walrusBlobId}, File ID: ${pair.onChainFileObjId}, Policy ID: ${pair.policyObjectId}`);
   });
   console.log(`  Address: ${parsedArgs.address}`);
-  console.log(`  PolicyObjectId: ${parsedArgs.policyObjectId}`);
   console.log(`  Threshold: ${parsedArgs.threshold}`);
   console.log(`  Enclave ID: ${parsedArgs.enclaveId}`);
   
@@ -453,7 +450,7 @@ async function processMessagesByMessage(messages, services, args) {
         
         console.log(`✅ Message ${message.id} saved on-chain with ID: ${messageOnChainFileObjId}`);
         
-        // Step 4: Store vector + blob ID + onChainFileId in vector database
+        // Step 4: Store vector + blob ID + onChainFileId + policyObjectId in vector database
         console.log(`💾 Storing vector for message ${message.id} in vector database...`);
         const vectorData = {
           id: message.id,
@@ -463,6 +460,7 @@ async function processMessagesByMessage(messages, services, args) {
             walrus_blob_id: walrusMetadata.blobId,
             walrus_url: walrusMetadata.walrusUrl,
             on_chain_file_obj_id: messageOnChainFileObjId,
+            policy_object_id: args.policyObjectId,
             processed_at: new Date().toISOString(),
             embedding_dimensions: embeddingResult.embedding.length
           }
@@ -691,10 +689,12 @@ async function runRetrieveByBlobIdsOperation() {
       const pair = parsedArgs.blobFilePairs[i];
       const blobId = pair.walrusBlobId;
       const onChainFileObjId = pair.onChainFileObjId;
+      const policyObjectId = pair.policyObjectId;
       
       console.log(`📦 Processing pair ${i + 1}/${parsedArgs.blobFilePairs.length}`);
       console.log(`   Blob ID: ${blobId}`);
       console.log(`   File ID: ${onChainFileObjId}`);
+      console.log(`   Policy ID: ${policyObjectId}`);
       
       try {
         // Step 1: Fetch encrypted message from Walrus
@@ -713,7 +713,7 @@ async function runRetrieveByBlobIdsOperation() {
           parsedArgs.address
         );
         
-        // Step 4: Decrypt message using the specific on-chain file ID for this pair
+        // Step 4: Decrypt message using the specific on-chain file ID and policy ID for this pair
         console.log(`🔓 Decrypting message...`);
         const decryptedMessage = await services.blockchain.seal.decryptFile(
           encryptedObject.id,
@@ -721,7 +721,7 @@ async function runRetrieveByBlobIdsOperation() {
           encryptedMessage,
           parsedArgs.address,
           onChainFileObjId, // Use the specific on-chain file ID for this pair
-          parsedArgs.policyObjectId,
+          policyObjectId, // Use the specific policy ID for this pair
           parsedArgs.threshold,
           services.blockchain.sui
         );
@@ -729,6 +729,7 @@ async function runRetrieveByBlobIdsOperation() {
         decryptedMessages.push({
           walrus_blob_id: blobId,
           on_chain_file_obj_id: onChainFileObjId,
+          policy_object_id: policyObjectId,
           status: 'success',
           message: decryptedMessage,
           encrypted_object_id: encryptedObject.id,
@@ -744,6 +745,7 @@ async function runRetrieveByBlobIdsOperation() {
         decryptedMessages.push({
           walrus_blob_id: blobId,
           on_chain_file_obj_id: onChainFileObjId,
+          policy_object_id: policyObjectId,
           status: 'failed',
           error: error.message
         });
@@ -756,7 +758,8 @@ async function runRetrieveByBlobIdsOperation() {
       operation: "retrieve-by-blob-ids",
       requested_pairs: parsedArgs.blobFilePairs.map(pair => ({
         walrus_blob_id: pair.walrusBlobId,
-        on_chain_file_obj_id: pair.onChainFileObjId
+        on_chain_file_obj_id: pair.onChainFileObjId,
+        policy_object_id: pair.policyObjectId
       })),
       results: decryptedMessages,
       total_requested: parsedArgs.blobFilePairs.length,
@@ -777,7 +780,8 @@ async function runRetrieveByBlobIdsOperation() {
       operation: "retrieve-by-blob-ids",
       requested_pairs: parsedArgs.blobFilePairs.map(pair => ({
         walrus_blob_id: pair.walrusBlobId,
-        on_chain_file_obj_id: pair.onChainFileObjId
+        on_chain_file_obj_id: pair.onChainFileObjId,
+        policy_object_id: pair.policyObjectId
       })),
       error: error.message
     };

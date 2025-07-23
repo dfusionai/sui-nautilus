@@ -73,6 +73,8 @@ pub struct BlobFileIdPair {
     pub walrus_blob_id: String,
     #[serde(rename = "onChainFileObjId")]
     pub on_chain_file_obj_id: String,
+    #[serde(rename = "policyObjectId")]
+    pub policy_object_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -81,7 +83,7 @@ pub struct MessageBlobRetrievalRequest {
     pub blob_file_pairs: Vec<BlobFileIdPair>,
     pub address: String,
     #[serde(rename = "policyObjectId")]
-    pub policy_object_id: String,
+    pub policy_object_id: Option<String>, // Now optional since each pair has its own policy ID
     pub threshold: String,
     pub timeout_secs: Option<u64>,
 }
@@ -385,8 +387,6 @@ pub async fn retrieve_messages_by_blob_ids(
         blob_file_pairs_json,
         "--address".to_string(),
         request.payload.address.clone(),
-        "--policy-object-id".to_string(),
-        request.payload.policy_object_id.clone(),
         "--threshold".to_string(),
         request.payload.threshold.clone(),
     ];
