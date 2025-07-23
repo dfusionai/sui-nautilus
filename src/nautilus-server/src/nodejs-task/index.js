@@ -394,7 +394,14 @@ async function processMessagesByMessage(messages, services, args) {
     
     // Generate embeddings for this batch
     const embeddingResults = await services.embedding.embedBatch(
-      batch.map(msg => msg.message)
+      batch.map(msg => {
+        // Format message content as [DateTime] [FromID] [Message]
+        const datetime = msg.timestamp || msg.date || new Date().toISOString();
+        const fromId = msg.from || msg.fromId || msg.sender || 'Unknown';
+        const message = msg.message || '';
+        
+        return `Date: ${datetime}, From: ${fromId}, Message: ${message}`;
+      })
     );
 
     // Check if any embeddings failed - FAIL FAST approach
