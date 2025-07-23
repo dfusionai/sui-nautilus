@@ -345,12 +345,8 @@ async function processMessagesByMessage(messages, services, args) {
           vector: embeddingResult.embedding,
           metadata: {
             message_id: message.id,
-            from_id: message.from_id,
-            date: message.date,
             walrus_blob_id: walrusMetadata.blobId,
             walrus_url: walrusMetadata.walrusUrl,
-            out: message.out,
-            reactions: message.reactions,
             processed_at: new Date().toISOString(),
             embedding_dimensions: embeddingResult.embedding.length
           }

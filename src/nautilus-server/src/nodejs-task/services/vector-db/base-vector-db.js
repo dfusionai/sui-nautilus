@@ -68,9 +68,18 @@ class BaseVectorDb {
         return await operation();
       } catch (error) {
         lastError = error;
+        console.error(`❌ Attempt ${attempt + 1} failed: ${error.message}`);
+        if (error.response) {
+          console.error(`   Response status: ${error.response.status}`);
+          console.error(`   Response data:`, error.response.data);
+        }
+        if (error.request) {
+          console.error(`   Request details:`, error.request);
+        }
+        
         if (attempt < retries - 1) {
           const delay = Math.pow(2, attempt) * 1000;
-          console.log(`⚠️  Attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
+          console.log(`⚠️  Retrying in ${delay}ms...`);
           await this._delay(delay);
         }
       }

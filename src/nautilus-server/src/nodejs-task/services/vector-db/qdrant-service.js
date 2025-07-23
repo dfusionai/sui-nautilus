@@ -1,5 +1,6 @@
 const BaseVectorDb = require('./base-vector-db');
 const { QdrantClient } = require('@qdrant/js-client-rest');
+const { randomUUID } = require('crypto');
 
 class QdrantService extends BaseVectorDb {
   constructor(options = {}) {
@@ -71,13 +72,16 @@ class QdrantService extends BaseVectorDb {
 
     const operation = async () => {
       const point = {
-        id: id.toString(),
+        id: randomUUID(),
         vector: vector,
         payload: {
           timestamp: new Date().toISOString(),
+          original_id: id.toString(),
           ...metadata
         }
       };
+
+      console.log(`Inserting point: ${JSON.stringify(point)}`)
 
       await this.client.upsert(this.collectionName, {
         wait: true,
@@ -111,21 +115,37 @@ class QdrantService extends BaseVectorDb {
           throw new Error('Each batch item must have id and vector properties');
         }
 
+        if (!Array.isArray(item.vector)) {
+          throw new Error(`Vector must be an array, got ${typeof item.vector}`);
+        }
+
         if (this.vectorSize === null) {
           this.vectorSize = item.vector.length;
         } else if (item.vector.length !== this.vectorSize) {
           throw new Error(`Vector dimension mismatch. Expected ${this.vectorSize}, got ${item.vector.length}`);
         }
 
+        // Validate vector values
+        for (let i = 0; i < item.vector.length; i++) {
+          const val = item.vector[i];
+          if (typeof val !== 'number' || !isFinite(val)) {
+            throw new Error(`Invalid vector value at index ${i}: ${val} (type: ${typeof val})`);
+          }
+        }
+
         return {
-          id: item.id.toString(),
+          id: randomUUID(),
           vector: item.vector,
           payload: {
             timestamp: new Date().toISOString(),
+            original_id: item.id.toString(),
             ...item.metadata || {}
           }
         };
       });
+
+      console.log(`🔍 Upserting ${points.length} points to collection '${this.collectionName}'`);
+      console.log(`Inserting points: ${JSON.stringify(points)}`)
 
       await this.client.upsert(this.collectionName, {
         wait: true,
