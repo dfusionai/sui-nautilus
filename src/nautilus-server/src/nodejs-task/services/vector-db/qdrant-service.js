@@ -6,11 +6,13 @@ class QdrantService extends BaseVectorDb {
     super(options);
     
     this.url = process.env.QDRANT_URL || 'http://localhost:6333';
+    this.port = this.url?.startsWith('https://') ? 443 : null;
     this.apiKey = process.env.QDRANT_API_KEY || null;
     this.collectionName = process.env.QDRANT_COLLECTION_NAME || 'messages';
-    
+
     this.client = new QdrantClient({
       url: this.url,
+      port: this.port,
       apiKey: this.apiKey
     });
     
@@ -19,9 +21,11 @@ class QdrantService extends BaseVectorDb {
 
   async connect() {
     try {
-      console.log(`🔗 Connecting to Qdrant at ${this.url}...`);
+      console.log(`🔗 Connecting to Qdrant at ${this.url} (${this.port}) ...`);
+      console.log(`🔑 Using API key: ${this.apiKey ? '***provided***' : 'none'}`);
       
-      const health = await this.client.api('cluster').clusterStatus();
+      // Use a simpler health check - just try to get collections
+      const collections = await this.client.getCollections();
       console.log('✅ Qdrant health check passed');
       
       await this._ensureCollection();
@@ -59,6 +63,8 @@ class QdrantService extends BaseVectorDb {
 
     if (this.vectorSize === null) {
       this.vectorSize = vector.length;
+      // Ensure collection is created now that we know the vector size
+      await this._ensureCollection();
     } else if (vector.length !== this.vectorSize) {
       throw new Error(`Vector dimension mismatch. Expected ${this.vectorSize}, got ${vector.length}`);
     }
@@ -88,6 +94,15 @@ class QdrantService extends BaseVectorDb {
   async _storeBatch(batch) {
     if (!this.connected) {
       await this.connect();
+    }
+
+    // Set vector size from first item and ensure collection exists
+    if (batch.length > 0 && this.vectorSize === null) {
+      const firstVector = batch[0].vector;
+      if (firstVector && Array.isArray(firstVector)) {
+        this.vectorSize = firstVector.length;
+        await this._ensureCollection();
+      }
     }
 
     const operation = async () => {
@@ -204,11 +219,17 @@ class QdrantService extends BaseVectorDb {
       );
 
       if (!collectionExists) {
-        console.log(`📦 Creating Qdrant collection: ${this.collectionName}`);
+        // Only create collection if we know the vector size
+        if (this.vectorSize === null) {
+          console.log(`⏳ Collection ${this.collectionName} will be created when first vector is stored`);
+          return;
+        }
+        
+        console.log(`📦 Creating Qdrant collection: ${this.collectionName} with vector size ${this.vectorSize}`);
         
         await this.client.createCollection(this.collectionName, {
           vectors: {
-            size: this.vectorSize || 384,
+            size: this.vectorSize,
             distance: 'Cosine'
           }
         });
@@ -216,6 +237,20 @@ class QdrantService extends BaseVectorDb {
         console.log(`✅ Created Qdrant collection: ${this.collectionName}`);
       } else {
         console.log(`✅ Qdrant collection already exists: ${this.collectionName}`);
+        
+        // Get collection info to verify vector size matches if we have one set
+        if (this.vectorSize !== null) {
+          try {
+            const collectionInfo = await this.client.getCollection(this.collectionName);
+            const existingVectorSize = collectionInfo.config.params.vectors.size;
+            
+            if (this.vectorSize !== existingVectorSize) {
+              throw new Error(`Vector size mismatch: expected ${this.vectorSize}, collection has ${existingVectorSize}`);
+            }
+          } catch (error) {
+            console.warn(`⚠️  Could not verify collection vector size: ${error.message}`);
+          }
+        }
       }
     } catch (error) {
       console.error(`❌ Error ensuring collection: ${error.message}`);
@@ -245,7 +280,8 @@ class QdrantService extends BaseVectorDb {
 
   async healthCheck() {
     try {
-      const health = await this.client.api('cluster').clusterStatus();
+      // Use getCollections as health check instead of cluster status
+      const collections = await this.client.getCollections();
       const collectionInfo = this.connected ? await this.getCollectionInfo() : null;
       
       return {
@@ -253,7 +289,7 @@ class QdrantService extends BaseVectorDb {
         url: this.url,
         collectionName: this.collectionName,
         connected: this.connected,
-        clusterStatus: health,
+        collectionsCount: collections.collections.length,
         collectionInfo
       };
     } catch (error) {

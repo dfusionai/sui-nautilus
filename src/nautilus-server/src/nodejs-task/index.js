@@ -31,6 +31,7 @@ const requiredEnvVars = [
   "OLLAMA_MODEL",
   "QDRANT_URL",
   "QDRANT_COLLECTION_NAME",
+  "QDRANT_API_KEY"
 ];
 
 console.log("🔧 Validating environment variables passed from Rust app...");
@@ -40,7 +41,7 @@ for (const key of requiredEnvVars) {
     missingVars.push(key);
     console.error(`❌ Missing required environment variable: ${key}`);
   } else {
-    console.log(`✅ ${key}: ${key.includes('SECRET') ? '***hidden***' : process.env[key]}`);
+    console.log(`✅ ${key}: ${key.includes('SECRET') || key.includes('API_KEY') ? '***hidden***' : process.env[key]}`);
   }
 }
 
