@@ -112,6 +112,107 @@ if (operation === 'embedding') {
     console.log(`  Processing Config:`, processingConfig);
   }
   
+} else if (operation === 'retrieve') {
+  // Retrieve operation: --operation retrieve --query <query> --address <address> --on-chain-file-obj-id <objId> --policy-object-id <policyId> --threshold <threshold> [--limit N] <enclaveId>
+  const queryIndex = args.indexOf('--query');
+  const addressIndex = args.indexOf('--address');
+  const onChainFileObjIdIndex = args.indexOf('--on-chain-file-obj-id');
+  const policyObjectIdIndex = args.indexOf('--policy-object-id');
+  const thresholdIndex = args.indexOf('--threshold');
+  
+  if (queryIndex === -1 || addressIndex === -1 || onChainFileObjIdIndex === -1 || 
+      policyObjectIdIndex === -1 || thresholdIndex === -1 || args.length < 12) {
+    console.error("Usage for retrieve: node index.js --operation retrieve --query <query> --address <address> --on-chain-file-obj-id <objId> --policy-object-id <policyId> --threshold <threshold> [--limit N] <enclaveId>");
+    process.exit(1);
+  }
+
+  // Parse optional limit
+  const limitIndex = args.indexOf('--limit');
+  
+  const processingConfig = {};
+  if (limitIndex !== -1 && args[limitIndex + 1]) {
+    processingConfig.limit = parseInt(args[limitIndex + 1]);
+  } else {
+    processingConfig.limit = 10; // default limit
+  }
+  
+  parsedArgs = {
+    operation: 'retrieve',
+    query: args[queryIndex + 1],
+    address: args[addressIndex + 1],
+    onChainFileObjId: args[onChainFileObjIdIndex + 1],
+    policyObjectId: args[policyObjectIdIndex + 1],
+    threshold: args[thresholdIndex + 1],
+    enclaveId: args[args.length - 1], // Last argument is enclaveId
+    processingConfig,
+  };
+  
+  console.log("📋 Retrieve Operation Arguments:");
+  console.log(`  Query: ${parsedArgs.query}`);
+  console.log(`  Address: ${parsedArgs.address}`);
+  console.log(`  OnChainFileObjId: ${parsedArgs.onChainFileObjId}`);
+  console.log(`  PolicyObjectId: ${parsedArgs.policyObjectId}`);
+  console.log(`  Threshold: ${parsedArgs.threshold}`);
+  console.log(`  Enclave ID: ${parsedArgs.enclaveId}`);
+  console.log(`  Limit: ${processingConfig.limit}`);
+  
+} else if (operation === 'retrieve-by-blob-ids') {
+  // Retrieve by blob IDs operation: --operation retrieve-by-blob-ids --blob-file-pairs <jsonString> --address <address> --policy-object-id <policyId> --threshold <threshold> <enclaveId>
+  const blobFilePairsIndex = args.indexOf('--blob-file-pairs');
+  const addressIndex = args.indexOf('--address');
+  const policyObjectIdIndex = args.indexOf('--policy-object-id');
+  const thresholdIndex = args.indexOf('--threshold');
+  
+  if (blobFilePairsIndex === -1 || addressIndex === -1 || 
+      policyObjectIdIndex === -1 || thresholdIndex === -1 || args.length < 10) {
+    console.error("Usage for retrieve-by-blob-ids: node index.js --operation retrieve-by-blob-ids --blob-file-pairs <jsonString> --address <address> --policy-object-id <policyId> --threshold <threshold> <enclaveId>");
+    process.exit(1);
+  }
+
+  const blobFilePairsStr = args[blobFilePairsIndex + 1];
+  let blobFilePairs;
+  
+  try {
+    blobFilePairs = JSON.parse(blobFilePairsStr);
+  } catch (error) {
+    console.error("❌ Failed to parse blob file pairs JSON:", error.message);
+    process.exit(1);
+  }
+  
+  if (!Array.isArray(blobFilePairs) || blobFilePairs.length === 0) {
+    console.error("❌ No valid blob file pairs provided");
+    process.exit(1);
+  }
+  
+  // Validate blob file pairs structure
+  for (let i = 0; i < blobFilePairs.length; i++) {
+    const pair = blobFilePairs[i];
+    if (!pair.walrusBlobId || !pair.onChainFileObjId) {
+      console.error(`❌ Invalid blob file pair at index ${i}: missing walrusBlobId or onChainFileObjId`);
+      process.exit(1);
+    }
+  }
+  
+  parsedArgs = {
+    operation: 'retrieve-by-blob-ids',
+    blobFilePairs: blobFilePairs,
+    address: args[addressIndex + 1],
+    policyObjectId: args[policyObjectIdIndex + 1],
+    threshold: args[thresholdIndex + 1],
+    enclaveId: args[args.length - 1], // Last argument is enclaveId
+    processingConfig: {},
+  };
+  
+  console.log("📋 Retrieve by Blob IDs Operation Arguments:");
+  console.log(`  Blob File Pairs: ${blobFilePairs.length} pairs`);
+  blobFilePairs.forEach((pair, index) => {
+    console.log(`    ${index + 1}. Blob ID: ${pair.walrusBlobId}, File ID: ${pair.onChainFileObjId}`);
+  });
+  console.log(`  Address: ${parsedArgs.address}`);
+  console.log(`  PolicyObjectId: ${parsedArgs.policyObjectId}`);
+  console.log(`  Threshold: ${parsedArgs.threshold}`);
+  console.log(`  Enclave ID: ${parsedArgs.enclaveId}`);
+  
 } else {
   // Default operation (refinement): <address> <blobId> <onChainFileObjId> <policyObjectId> <threshold> <enclaveId>
   if (args.length < 6) {
@@ -185,6 +286,10 @@ async function runTasks() {
     
     if (parsedArgs.operation === 'embedding') {
       await runEmbeddingOperation();
+    } else if (parsedArgs.operation === 'retrieve') {
+      await runRetrieveOperation();
+    } else if (parsedArgs.operation === 'retrieve-by-blob-ids') {
+      await runRetrieveByBlobIdsOperation();
     } else {
       await runDefaultOperation();
     }
@@ -418,6 +523,257 @@ async function processMessagesByMessage(messages, services, args) {
   console.log(`✅ All ${validMessages.length} messages processed successfully!`);
   console.log(`📊 Final Stats: ${stats.successfulEmbeddings} embeddings, ${stats.successfulWalrusUploads} uploads, ${stats.successfulVectorStorages} vectors stored`);
   return result;
+}
+
+async function runRetrieveOperation() {
+  console.log("🔍 Running Message Retrieval Operation...");
+  
+  try {
+    // Step 1: Connect to vector database
+    console.log("📦 Step 1: Connecting to vector database...");
+    if (!services.vectorDb.isConnected()) {
+      await services.vectorDb.connect();
+    }
+    
+    // Step 2: Generate embedding for the query
+    console.log("🔤 Step 2: Generating embedding for query...");
+    const queryEmbeddingResult = await services.embedding.embed(parsedArgs.query);
+    
+    if (!queryEmbeddingResult.success) {
+      console.error(`❌ Failed to generate embedding for query: ${queryEmbeddingResult.error}`);
+      process.exit(1);
+    }
+    
+    console.log(`✅ Query embedding generated (${queryEmbeddingResult.embedding.length} dimensions)`);
+    
+    // Step 3: Search for similar vectors in the database
+    console.log("🔍 Step 3: Searching for similar messages...");
+    const searchResults = await services.vectorDb.search(
+      queryEmbeddingResult.embedding,
+      parsedArgs.processingConfig.limit
+    );
+    
+    console.log(`🔍 Found ${searchResults.length} similar messages`);
+    
+    if (searchResults.length === 0) {
+      const result = {
+        status: "success",
+        operation: "retrieve",
+        query: parsedArgs.query,
+        results: [],
+        count: 0,
+        message: "No similar messages found"
+      };
+      
+      console.log("✅ Message retrieval completed!");
+      console.log(JSON.stringify(result, null, 2));
+      process.exit(0);
+    }
+    
+    // Step 4: Decrypt each message
+    console.log("🔓 Step 4: Decrypting messages...");
+    const decryptedMessages = [];
+    
+    for (let i = 0; i < searchResults.length; i++) {
+      const searchResult = searchResults[i];
+      console.log(`🔓 Decrypting message ${i + 1}/${searchResults.length} (ID: ${searchResult.metadata.message_id}, Score: ${searchResult.score.toFixed(4)})`);
+      
+      try {
+        // Fetch encrypted message from Walrus
+        const encryptedMessage = await services.blockchain.walrus.fetchEncryptedFile(searchResult.metadata.walrus_blob_id);
+        
+        // Parse encrypted object
+        const encryptedObject = services.blockchain.seal.parseEncryptedObject(encryptedMessage);
+        
+        // Register attestation for decryption
+        const attestationObjId = await services.blockchain.sui.registerAttestation(
+          encryptedObject.id, 
+          parsedArgs.enclaveId, 
+          parsedArgs.address
+        );
+        
+        // Decrypt message
+        const decryptedMessage = await services.blockchain.seal.decryptFile(
+          encryptedObject.id,
+          attestationObjId,
+          encryptedMessage,
+          parsedArgs.address,
+          parsedArgs.onChainFileObjId,
+          parsedArgs.policyObjectId,
+          parsedArgs.threshold,
+          services.blockchain.sui
+        );
+        
+        decryptedMessages.push({
+          id: searchResult.metadata.message_id,
+          score: searchResult.score,
+          message: decryptedMessage,
+          metadata: {
+            walrus_blob_id: searchResult.metadata.walrus_blob_id,
+            walrus_url: searchResult.metadata.walrus_url,
+            processed_at: searchResult.metadata.processed_at,
+            embedding_dimensions: searchResult.metadata.embedding_dimensions
+          }
+        });
+        
+        console.log(`✅ Successfully decrypted message ${searchResult.metadata.message_id}`);
+        
+      } catch (error) {
+        console.error(`❌ Failed to decrypt message ${searchResult.metadata.message_id}: ${error.message}`);
+        
+        // Add failed message with error info
+        decryptedMessages.push({
+          id: searchResult.metadata.message_id,
+          score: searchResult.score,
+          error: error.message,
+          metadata: {
+            walrus_blob_id: searchResult.metadata.walrus_blob_id,
+            walrus_url: searchResult.metadata.walrus_url,
+            processed_at: searchResult.metadata.processed_at,
+            embedding_dimensions: searchResult.metadata.embedding_dimensions
+          }
+        });
+      }
+    }
+    
+    // Step 5: Return results
+    const result = {
+      status: "success",
+      operation: "retrieve",
+      query: parsedArgs.query,
+      results: decryptedMessages,
+      count: decryptedMessages.length,
+      successfulDecryptions: decryptedMessages.filter(msg => !msg.error).length,
+      failedDecryptions: decryptedMessages.filter(msg => msg.error).length
+    };
+    
+    console.log("✅ Message retrieval completed!");
+    console.log(`📊 Retrieved ${result.count} messages (${result.successfulDecryptions} successful, ${result.failedDecryptions} failed)`);
+    console.log(JSON.stringify(result, null, 2));
+    process.exit(0);
+    
+  } catch (error) {
+    console.error("💥 Retrieval operation failed:", error.message);
+    
+    const result = {
+      status: "failed",
+      operation: "retrieve",
+      query: parsedArgs.query,
+      error: error.message
+    };
+    
+    console.log(JSON.stringify(result, null, 2));
+    process.exit(1);
+  }
+}
+
+async function runRetrieveByBlobIdsOperation() {
+  console.log("📦 Running Message Retrieval by Blob IDs Operation...");
+  
+  try {
+    console.log(`📊 Processing ${parsedArgs.blobFilePairs.length} blob file pairs...`);
+    
+    const decryptedMessages = [];
+    
+    // Process each blob file pair
+    for (let i = 0; i < parsedArgs.blobFilePairs.length; i++) {
+      const pair = parsedArgs.blobFilePairs[i];
+      const blobId = pair.walrusBlobId;
+      const onChainFileObjId = pair.onChainFileObjId;
+      
+      console.log(`📦 Processing pair ${i + 1}/${parsedArgs.blobFilePairs.length}`);
+      console.log(`   Blob ID: ${blobId}`);
+      console.log(`   File ID: ${onChainFileObjId}`);
+      
+      try {
+        // Step 1: Fetch encrypted message from Walrus
+        console.log(`📥 Fetching encrypted message from Walrus...`);
+        const encryptedMessage = await services.blockchain.walrus.fetchEncryptedFile(blobId);
+        
+        // Step 2: Parse encrypted object
+        console.log(`📦 Parsing encrypted object...`);
+        const encryptedObject = services.blockchain.seal.parseEncryptedObject(encryptedMessage);
+        
+        // Step 3: Register attestation for decryption
+        console.log(`🔗 Registering attestation...`);
+        const attestationObjId = await services.blockchain.sui.registerAttestation(
+          encryptedObject.id, 
+          parsedArgs.enclaveId, 
+          parsedArgs.address
+        );
+        
+        // Step 4: Decrypt message using the specific on-chain file ID for this pair
+        console.log(`🔓 Decrypting message...`);
+        const decryptedMessage = await services.blockchain.seal.decryptFile(
+          encryptedObject.id,
+          attestationObjId,
+          encryptedMessage,
+          parsedArgs.address,
+          onChainFileObjId, // Use the specific on-chain file ID for this pair
+          parsedArgs.policyObjectId,
+          parsedArgs.threshold,
+          services.blockchain.sui
+        );
+        
+        decryptedMessages.push({
+          walrus_blob_id: blobId,
+          on_chain_file_obj_id: onChainFileObjId,
+          status: 'success',
+          message: decryptedMessage,
+          encrypted_object_id: encryptedObject.id,
+          attestation_obj_id: attestationObjId
+        });
+        
+        console.log(`✅ Successfully decrypted message from blob ${blobId}`);
+        
+      } catch (error) {
+        console.error(`❌ Failed to decrypt message from blob ${blobId}: ${error.message}`);
+        
+        // Add failed message with error info
+        decryptedMessages.push({
+          walrus_blob_id: blobId,
+          on_chain_file_obj_id: onChainFileObjId,
+          status: 'failed',
+          error: error.message
+        });
+      }
+    }
+    
+    // Return results
+    const result = {
+      status: "success",
+      operation: "retrieve-by-blob-ids",
+      requested_pairs: parsedArgs.blobFilePairs.map(pair => ({
+        walrus_blob_id: pair.walrusBlobId,
+        on_chain_file_obj_id: pair.onChainFileObjId
+      })),
+      results: decryptedMessages,
+      total_requested: parsedArgs.blobFilePairs.length,
+      successful_decryptions: decryptedMessages.filter(msg => msg.status === 'success').length,
+      failed_decryptions: decryptedMessages.filter(msg => msg.status === 'failed').length
+    };
+    
+    console.log("✅ Blob ID retrieval completed!");
+    console.log(`📊 Processed ${result.total_requested} pairs (${result.successful_decryptions} successful, ${result.failed_decryptions} failed)`);
+    console.log(JSON.stringify(result, null, 2));
+    process.exit(0);
+    
+  } catch (error) {
+    console.error("💥 Blob ID retrieval operation failed:", error.message);
+    
+    const result = {
+      status: "failed",
+      operation: "retrieve-by-blob-ids",
+      requested_pairs: parsedArgs.blobFilePairs.map(pair => ({
+        walrus_blob_id: pair.walrusBlobId,
+        on_chain_file_obj_id: pair.onChainFileObjId
+      })),
+      error: error.message
+    };
+    
+    console.log(JSON.stringify(result, null, 2));
+    process.exit(1);
+  }
 }
 
 async function runDefaultOperation() {
