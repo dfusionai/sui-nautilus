@@ -443,7 +443,17 @@ async function processMessagesByMessage(messages, services, args) {
         
         console.log(`✅ Message ${message.id} uploaded to Walrus with blob ID: ${walrusMetadata.blobId}`);
         
-        // Step 3: Store vector + blob ID in vector database
+        // Step 3: Save encrypted message on-chain to get individual onChainFileObjId
+        console.log(`💾 Saving encrypted message ${message.id} on-chain...`);
+        const messageOnChainFileObjId = await services.blockchain.sui.saveEncryptedFileOnChain(
+          encryptedMessage,
+          walrusMetadata,
+          args.policyObjectId
+        );
+        
+        console.log(`✅ Message ${message.id} saved on-chain with ID: ${messageOnChainFileObjId}`);
+        
+        // Step 4: Store vector + blob ID + onChainFileId in vector database
         console.log(`💾 Storing vector for message ${message.id} in vector database...`);
         const vectorData = {
           id: message.id,
@@ -452,6 +462,7 @@ async function processMessagesByMessage(messages, services, args) {
             message_id: message.id,
             walrus_blob_id: walrusMetadata.blobId,
             walrus_url: walrusMetadata.walrusUrl,
+            on_chain_file_obj_id: messageOnChainFileObjId,
             processed_at: new Date().toISOString(),
             embedding_dimensions: embeddingResult.embedding.length
           }
