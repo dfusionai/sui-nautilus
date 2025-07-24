@@ -395,12 +395,14 @@ async function processMessagesByMessage(messages, services, args) {
     // Generate embeddings for this batch
     const embeddingResults = await services.embedding.embedBatch(
       batch.map(msg => {
-        // Format message content as [DateTime] [FromID] [Message]
-        const datetime = msg.timestamp || msg.date || new Date().toISOString();
-        const fromId = msg.from || msg.fromId || msg.sender || 'Unknown';
+        // Format message content as: Date: datetime, From User Id: 233, Message: ...., Conversation Id: 333, Owner User Id: ...
+        const datetime = msg.date || "";
+        const fromUserId = msg.from_id || '';
         const message = msg.message || '';
+        const conversationId = msg.chat_id || '';
+        const ownerUserId = msg.user_id || '';
         
-        return `Date: ${datetime}, From: ${fromId}, Message: ${message}`;
+        return `Date: ${datetime}, From User Id: ${fromUserId}, Message: ${message}, Conversation Id: ${conversationId}, Owner User Id: ${ownerUserId}`;
       })
     );
 
@@ -464,11 +466,14 @@ async function processMessagesByMessage(messages, services, args) {
           vector: embeddingResult.embedding,
           metadata: {
             message_id: message.id,
+            user_id: message.user_id,
+            chat_id: message.chat_id,
+            from_id: message.from_id,
             walrus_blob_id: walrusMetadata.blobId,
             walrus_url: walrusMetadata.walrusUrl,
             on_chain_file_obj_id: messageOnChainFileObjId,
             policy_object_id: args.policyObjectId,
-            processed_at: new Date().toISOString(),
+            request_address: args.address,
             embedding_dimensions: embeddingResult.embedding.length
           }
         };

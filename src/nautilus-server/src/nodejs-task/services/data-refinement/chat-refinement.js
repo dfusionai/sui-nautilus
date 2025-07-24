@@ -24,7 +24,7 @@ class ChatRefinement extends BaseRefinement {
           console.log(`💬 Processing chat with ${chat.contents.length} messages...`);
           
           for (const msg of chat.contents) {
-            const transformedMessage = this.transformMessage(msg);
+            const transformedMessage = this.transformMessage(msg, rawData.user, chat.chat_id);
             refinedData.messages.push(transformedMessage);
           }
         }
@@ -43,13 +43,15 @@ class ChatRefinement extends BaseRefinement {
     };
   }
 
-  transformMessage(msg) {
+  transformMessage(msg, userId, chatId) {
     if (!msg || typeof msg !== 'object') {
       throw new Error('Message must be an object');
     }
 
     const messageData = {
       id: msg.id,
+      user_id: userId,
+      chat_id: chatId,
       from_id: msg.fromId?.userId || null,
       date: msg.date ? new Date(msg.date * 1000).toISOString() : null,
       edit_date: msg.editDate ? new Date(msg.editDate * 1000).toISOString() : null,

@@ -26,7 +26,7 @@ use crate::common::{health_check};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TaskResponse {
     pub status: String,
-    pub data: String,
+    pub data: serde_json::Value,
     pub stderr: String,
     pub exit_code: i32,
     pub execution_time_ms: u64,
@@ -106,32 +106,32 @@ pub async fn process_data(
 ) -> Result<Json<TaskResponse>, EnclaveError> {
     // get attestation
     let attestation_info = get_attestation(State(state.clone())).await?;
-    
+
     // Get the absolute path to nodejs-task
     let current_dir = std::env::current_dir().unwrap();
     let task_path = current_dir.join("nodejs-task").to_string_lossy().into_owned();
-    
+
     // Prepare environment variables from AppState
     let mut env_vars = std::collections::HashMap::new();
-    
+
     // Core blockchain configuration
     env_vars.insert("MOVE_PACKAGE_ID".to_string(), state.move_package_id().to_string());
     env_vars.insert("SUI_SECRET_KEY".to_string(), state.sui_secret_key().to_string());
     env_vars.insert("WALRUS_AGGREGATOR_URL".to_string(), state.walrus_aggregator_url().to_string());
     env_vars.insert("WALRUS_PUBLISHER_URL".to_string(), state.walrus_publisher_url().to_string());
     env_vars.insert("WALRUS_EPOCHS".to_string(), state.walrus_epochs_str().to_string());
-    
+
     // Ollama embedding service configuration
     env_vars.insert("OLLAMA_API_URL".to_string(), state.ollama_api_url().to_string());
     env_vars.insert("OLLAMA_MODEL".to_string(), state.ollama_model().to_string());
-    
+
     // Qdrant vector database configuration
     env_vars.insert("QDRANT_URL".to_string(), state.qdrant_url().to_string());
     env_vars.insert("QDRANT_COLLECTION_NAME".to_string(), state.qdrant_collection_name().to_string());
     if let Some(api_key) = state.qdrant_api_key() {
         env_vars.insert("QDRANT_API_KEY".to_string(), api_key.to_string());
     }
-    
+
     // Task processing configuration
     env_vars.insert("EMBEDDING_BATCH_SIZE".to_string(), state.embedding_batch_size_str().to_string());
     env_vars.insert("VECTOR_BATCH_SIZE".to_string(), state.vector_batch_size_str().to_string());
@@ -146,7 +146,7 @@ pub async fn process_data(
         args,
         env_vars,
     };
-    
+
     // Create and run the task
     let task_runner = NodeTaskRunner::new(task_config);
     let task_output = task_runner.run().await.map_err(|e| {
@@ -154,21 +154,26 @@ pub async fn process_data(
     })?;
 
     // If task failed, return error
-    // if task_output.exit_code != 0 {
-    //     return Err(EnclaveError::GenericError(format!(
-    //         "Task failed with exit code {}: {}",
-    //         task_output.exit_code,
-    //         task_output.stderr
-    //     )));
-    // }
+    if task_output.exit_code != 0 {
+        return Err(EnclaveError::GenericError(format!(
+            "Task failed with exit code {}: {}",
+            task_output.exit_code,
+            task_output.stderr
+        )));
+    }
 
-    // // Parse the stdout JSON
-    // let data = serde_json::from_str::<ProcessedData>(&task_output.stdout)
-    //     .map_err(|e| EnclaveError::GenericError(format!("Failed to parse task output: {}", e)))?;
+    // Parse the stdout JSON response from Node.js task
+    let json_data: serde_json::Value = serde_json::from_str(&task_output.stdout)
+        .unwrap_or_else(|e| serde_json::json!({
+            "status": "failed",
+            "operation": "default",
+            "error": format!("Failed to parse task output: {}", e),
+            "raw_output": task_output.stdout
+        }));
 
     Ok(Json(TaskResponse {
         status: "success".to_string(),
-        data: task_output.stdout,
+        data: json_data,
         stderr: task_output.stderr,
         exit_code: task_output.exit_code,
         execution_time_ms: task_output.execution_time_ms,
@@ -181,32 +186,32 @@ pub async fn embedding_ingest(
 ) -> Result<Json<TaskResponse>, EnclaveError> {
     // get attestation
     let attestation_info = get_attestation(State(state.clone())).await?;
-    
+
     // Get the absolute path to nodejs-task
     let current_dir = std::env::current_dir().unwrap();
     let task_path = current_dir.join("nodejs-task").to_string_lossy().into_owned();
-    
+
     // Prepare environment variables from AppState
     let mut env_vars = std::collections::HashMap::new();
-    
+
     // Core blockchain configuration
     env_vars.insert("MOVE_PACKAGE_ID".to_string(), state.move_package_id().to_string());
     env_vars.insert("SUI_SECRET_KEY".to_string(), state.sui_secret_key().to_string());
     env_vars.insert("WALRUS_AGGREGATOR_URL".to_string(), state.walrus_aggregator_url().to_string());
     env_vars.insert("WALRUS_PUBLISHER_URL".to_string(), state.walrus_publisher_url().to_string());
     env_vars.insert("WALRUS_EPOCHS".to_string(), state.walrus_epochs_str().to_string());
-    
+
     // Ollama embedding service configuration
     env_vars.insert("OLLAMA_API_URL".to_string(), state.ollama_api_url().to_string());
     env_vars.insert("OLLAMA_MODEL".to_string(), state.ollama_model().to_string());
-    
+
     // Qdrant vector database configuration
     env_vars.insert("QDRANT_URL".to_string(), state.qdrant_url().to_string());
     env_vars.insert("QDRANT_COLLECTION_NAME".to_string(), state.qdrant_collection_name().to_string());
     if let Some(api_key) = state.qdrant_api_key() {
         env_vars.insert("QDRANT_API_KEY".to_string(), api_key.to_string());
     }
-    
+
     // Task processing configuration
     env_vars.insert("EMBEDDING_BATCH_SIZE".to_string(), state.embedding_batch_size_str().to_string());
     env_vars.insert("VECTOR_BATCH_SIZE".to_string(), state.vector_batch_size_str().to_string());
@@ -241,16 +246,25 @@ pub async fn embedding_ingest(
         args,
         env_vars,
     };
-    
+
     // Create and run the task
     let task_runner = NodeTaskRunner::new(task_config);
     let task_output = task_runner.run().await.map_err(|e| {
         EnclaveError::GenericError(format!("Failed to execute embedding ingest task: {}", e))
     })?;
 
+    // Parse the stdout JSON response from Node.js task
+    let json_data: serde_json::Value = serde_json::from_str(&task_output.stdout)
+        .unwrap_or_else(|e| serde_json::json!({
+            "status": "failed",
+            "operation": "embedding",
+            "error": format!("Failed to parse task output: {}", e),
+            "raw_output": task_output.stdout
+        }));
+
     Ok(Json(TaskResponse {
         status: "success".to_string(),
-        data: task_output.stdout,
+        data: json_data,
         stderr: task_output.stderr,
         exit_code: task_output.exit_code,
         execution_time_ms: task_output.execution_time_ms,
@@ -263,32 +277,32 @@ pub async fn retrieve_messages(
 ) -> Result<Json<TaskResponse>, EnclaveError> {
     // get attestation
     let attestation_info = get_attestation(State(state.clone())).await?;
-    
+
     // Get the absolute path to nodejs-task
     let current_dir = std::env::current_dir().unwrap();
     let task_path = current_dir.join("nodejs-task").to_string_lossy().into_owned();
-    
+
     // Prepare environment variables from AppState
     let mut env_vars = std::collections::HashMap::new();
-    
+
     // Core blockchain configuration
     env_vars.insert("MOVE_PACKAGE_ID".to_string(), state.move_package_id().to_string());
     env_vars.insert("SUI_SECRET_KEY".to_string(), state.sui_secret_key().to_string());
     env_vars.insert("WALRUS_AGGREGATOR_URL".to_string(), state.walrus_aggregator_url().to_string());
     env_vars.insert("WALRUS_PUBLISHER_URL".to_string(), state.walrus_publisher_url().to_string());
     env_vars.insert("WALRUS_EPOCHS".to_string(), state.walrus_epochs_str().to_string());
-    
+
     // Ollama embedding service configuration
     env_vars.insert("OLLAMA_API_URL".to_string(), state.ollama_api_url().to_string());
     env_vars.insert("OLLAMA_MODEL".to_string(), state.ollama_model().to_string());
-    
+
     // Qdrant vector database configuration
     env_vars.insert("QDRANT_URL".to_string(), state.qdrant_url().to_string());
     env_vars.insert("QDRANT_COLLECTION_NAME".to_string(), state.qdrant_collection_name().to_string());
     if let Some(api_key) = state.qdrant_api_key() {
         env_vars.insert("QDRANT_API_KEY".to_string(), api_key.to_string());
     }
-    
+
     // Task processing configuration
     env_vars.insert("EMBEDDING_BATCH_SIZE".to_string(), state.embedding_batch_size_str().to_string());
     env_vars.insert("VECTOR_BATCH_SIZE".to_string(), state.vector_batch_size_str().to_string());
@@ -323,16 +337,25 @@ pub async fn retrieve_messages(
         args,
         env_vars,
     };
-    
+
     // Create and run the task
     let task_runner = NodeTaskRunner::new(task_config);
     let task_output = task_runner.run().await.map_err(|e| {
         EnclaveError::GenericError(format!("Failed to execute message retrieval task: {}", e))
     })?;
 
+    // Parse the stdout JSON response from Node.js task
+    let json_data: serde_json::Value = serde_json::from_str(&task_output.stdout)
+        .unwrap_or_else(|e| serde_json::json!({
+            "status": "failed",
+            "operation": "retrieve",
+            "error": format!("Failed to parse task output: {}", e),
+            "raw_output": task_output.stdout
+        }));
+
     Ok(Json(TaskResponse {
         status: "success".to_string(),
-        data: task_output.stdout,
+        data: json_data,
         stderr: task_output.stderr,
         exit_code: task_output.exit_code,
         execution_time_ms: task_output.execution_time_ms,
@@ -345,32 +368,32 @@ pub async fn retrieve_messages_by_blob_ids(
 ) -> Result<Json<TaskResponse>, EnclaveError> {
     // get attestation
     let attestation_info = get_attestation(State(state.clone())).await?;
-    
+
     // Get the absolute path to nodejs-task
     let current_dir = std::env::current_dir().unwrap();
     let task_path = current_dir.join("nodejs-task").to_string_lossy().into_owned();
-    
+
     // Prepare environment variables from AppState
     let mut env_vars = std::collections::HashMap::new();
-    
+
     // Core blockchain configuration
     env_vars.insert("MOVE_PACKAGE_ID".to_string(), state.move_package_id().to_string());
     env_vars.insert("SUI_SECRET_KEY".to_string(), state.sui_secret_key().to_string());
     env_vars.insert("WALRUS_AGGREGATOR_URL".to_string(), state.walrus_aggregator_url().to_string());
     env_vars.insert("WALRUS_PUBLISHER_URL".to_string(), state.walrus_publisher_url().to_string());
     env_vars.insert("WALRUS_EPOCHS".to_string(), state.walrus_epochs_str().to_string());
-    
+
     // Ollama embedding service configuration (not needed but kept for consistency)
     env_vars.insert("OLLAMA_API_URL".to_string(), state.ollama_api_url().to_string());
     env_vars.insert("OLLAMA_MODEL".to_string(), state.ollama_model().to_string());
-    
+
     // Qdrant vector database configuration (not needed but kept for consistency)
     env_vars.insert("QDRANT_URL".to_string(), state.qdrant_url().to_string());
     env_vars.insert("QDRANT_COLLECTION_NAME".to_string(), state.qdrant_collection_name().to_string());
     if let Some(api_key) = state.qdrant_api_key() {
         env_vars.insert("QDRANT_API_KEY".to_string(), api_key.to_string());
     }
-    
+
     // Task processing configuration
     env_vars.insert("EMBEDDING_BATCH_SIZE".to_string(), state.embedding_batch_size_str().to_string());
     env_vars.insert("VECTOR_BATCH_SIZE".to_string(), state.vector_batch_size_str().to_string());
@@ -399,16 +422,25 @@ pub async fn retrieve_messages_by_blob_ids(
         args,
         env_vars,
     };
-    
+
     // Create and run the task
     let task_runner = NodeTaskRunner::new(task_config);
     let task_output = task_runner.run().await.map_err(|e| {
         EnclaveError::GenericError(format!("Failed to execute blob ID retrieval task: {}", e))
     })?;
 
+    // Parse the stdout JSON response from Node.js task
+    let json_data: serde_json::Value = serde_json::from_str(&task_output.stdout)
+        .unwrap_or_else(|e| serde_json::json!({
+            "status": "failed",
+            "operation": "retrieve-by-blob-ids",
+            "error": format!("Failed to parse task output: {}", e),
+            "raw_output": task_output.stdout
+        }));
+
     Ok(Json(TaskResponse {
         status: "success".to_string(),
-        data: task_output.stdout,
+        data: json_data,
         stderr: task_output.stderr,
         exit_code: task_output.exit_code,
         execution_time_ms: task_output.execution_time_ms,
@@ -439,7 +471,7 @@ mod test {
         use fastcrypto::encoding::{Encoding, Hex};
         let payload = TaskResponse {
             status: "success".to_string(),
-            data: "Hello World".to_string(),
+            data: serde_json::json!("Hello World"),
             stderr: "".to_string(),
             exit_code: 0,
             execution_time_ms: 1500,
@@ -447,7 +479,7 @@ mod test {
         let timestamp = 1744038900000;
         let intent_msg = IntentMessage::new(payload, timestamp, IntentScope::Generic);
         let signing_payload = bcs::to_bytes(&intent_msg).expect("should not fail");
-        
+
         // Just ensure serialization works without checking exact bytes since structure changed
         assert!(!signing_payload.is_empty());
     }
