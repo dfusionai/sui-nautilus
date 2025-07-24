@@ -335,11 +335,12 @@ async function runEmbeddingOperation() {
   
   if (result.status === "failed") {
     console.error("❌ Embedding operation failed!");
-    console.error(JSON.stringify(result, null, 2));
     process.exit(1); // Exit with error code to indicate failure
   } else {
     console.log("✅ Embedding operation completed successfully!");
-    console.log(JSON.stringify(result, null, 2));
+    console.log("===TASK_RESULT_START===");
+    console.log(JSON.stringify(result));
+    console.log("===TASK_RESULT_END===");
     process.exit(0);
   }
 }
@@ -415,7 +416,7 @@ async function processMessagesByMessage(messages, services, args) {
         const error = `Failed to generate embedding for message ${message.id}: ${embeddingResult.error || 'Unknown error'}`;
         console.error(`💥 EMBEDDING FAILURE - STOPPING PROCESSING: ${error}`);
         
-        return {
+        const failureResult = {
           status: "failed",
           operation: "embedding",
           processedCount: 0,
@@ -425,6 +426,12 @@ async function processMessagesByMessage(messages, services, args) {
           totalMessages: validMessages.length,
           processedSoFar: stats.successfulEmbeddings
         };
+        
+        console.log("===TASK_RESULT_START===");
+        console.log(JSON.stringify(failureResult));
+        console.log("===TASK_RESULT_END===");
+        
+        return failureResult;
       }
     }
 
@@ -487,7 +494,7 @@ async function processMessagesByMessage(messages, services, args) {
           const error = `Failed to store vector for message ${message.id}: ${storeResult[0]?.error || 'Unknown error'}`;
           console.error(`💥 VECTOR STORAGE FAILURE - STOPPING PROCESSING: ${error}`);
           
-          return {
+          const failureResult = {
             status: "failed",
             operation: "embedding",
             processedCount: 0,
@@ -497,6 +504,12 @@ async function processMessagesByMessage(messages, services, args) {
             totalMessages: validMessages.length,
             processedSoFar: stats.successfulEmbeddings
           };
+          
+          console.log("===TASK_RESULT_START===");
+          console.log(JSON.stringify(failureResult));
+          console.log("===TASK_RESULT_END===");
+          
+          return failureResult;
         }
         
       } catch (error) {
@@ -510,7 +523,7 @@ async function processMessagesByMessage(messages, services, args) {
           failureReason = "encryption_failed";
         }
         
-        return {
+        const failureResult = {
           status: "failed",
           operation: "embedding",
           processedCount: 0,
@@ -520,6 +533,12 @@ async function processMessagesByMessage(messages, services, args) {
           totalMessages: validMessages.length,
           processedSoFar: stats.successfulEmbeddings
         };
+        
+        console.log("===TASK_RESULT_START===");
+        console.log(JSON.stringify(failureResult));
+        console.log("===TASK_RESULT_END===");
+        
+        return failureResult;
       }
     }
 
@@ -543,6 +562,12 @@ async function processMessagesByMessage(messages, services, args) {
 
   console.log(`✅ All ${validMessages.length} messages processed successfully!`);
   console.log(`📊 Final Stats: ${stats.successfulEmbeddings} embeddings, ${stats.successfulWalrusUploads} uploads, ${stats.successfulVectorStorages} vectors stored`);
+  
+  // Output the final result with delimiter for parsing
+  console.log("===TASK_RESULT_START===");
+  console.log(JSON.stringify(result));
+  console.log("===TASK_RESULT_END===");
+  
   return result;
 }
 
@@ -587,7 +612,9 @@ async function runRetrieveOperation() {
       };
       
       console.log("✅ Message retrieval completed!");
-      console.log(JSON.stringify(result, null, 2));
+      console.log("===TASK_RESULT_START===");
+      console.log(JSON.stringify(result));
+      console.log("===TASK_RESULT_END===");
       process.exit(0);
     }
     
@@ -670,7 +697,9 @@ async function runRetrieveOperation() {
     
     console.log("✅ Message retrieval completed!");
     console.log(`📊 Retrieved ${result.count} messages (${result.successfulDecryptions} successful, ${result.failedDecryptions} failed)`);
-    console.log(JSON.stringify(result, null, 2));
+    console.log("===TASK_RESULT_START===");
+    console.log(JSON.stringify(result));
+    console.log("===TASK_RESULT_END===");
     process.exit(0);
     
   } catch (error) {
@@ -683,7 +712,9 @@ async function runRetrieveOperation() {
       error: error.message
     };
     
-    console.log(JSON.stringify(result, null, 2));
+    console.log("===TASK_RESULT_START===");
+    console.log(JSON.stringify(result));
+    console.log("===TASK_RESULT_END===");
     process.exit(1);
   }
 }
@@ -781,7 +812,9 @@ async function runRetrieveByBlobIdsOperation() {
     
     console.log("✅ Blob ID retrieval completed!");
     console.log(`📊 Processed ${result.total_requested} pairs (${result.successful_decryptions} successful, ${result.failed_decryptions} failed)`);
-    console.log(JSON.stringify(result, null, 2));
+    console.log("===TASK_RESULT_START===");
+    console.log(JSON.stringify(result));
+    console.log("===TASK_RESULT_END===");
     process.exit(0);
     
   } catch (error) {
@@ -798,7 +831,9 @@ async function runRetrieveByBlobIdsOperation() {
       error: error.message
     };
     
-    console.log(JSON.stringify(result, null, 2));
+    console.log("===TASK_RESULT_START===");
+    console.log(JSON.stringify(result));
+    console.log("===TASK_RESULT_END===");
     process.exit(1);
   }
 }
@@ -866,7 +901,9 @@ async function runDefaultOperation() {
   };
   
   console.log("✅ Task completed successfully!");
-  console.log(JSON.stringify(result, null, 2));
+  console.log("===TASK_RESULT_START===");
+  console.log(JSON.stringify(result));
+  console.log("===TASK_RESULT_END===");
   process.exit(0);
 }
 

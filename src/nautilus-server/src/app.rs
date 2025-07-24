@@ -17,6 +17,20 @@ use axum::Router;
 use axum::http::{HeaderValue, Method, header::{CONTENT_TYPE, AUTHORIZATION, ACCEPT, ORIGIN, REFERER, USER_AGENT}};
 use crate::common::{health_check};
 
+// Helper function to extract task result from stdout using delimiters
+fn extract_task_result(stdout: &str) -> Option<serde_json::Value> {
+    let start_marker = "===TASK_RESULT_START===";
+    let end_marker = "===TASK_RESULT_END===";
+    
+    let start_pos = stdout.find(start_marker)?;
+    let start_pos = start_pos + start_marker.len();
+    
+    let end_pos = stdout[start_pos..].find(end_marker)?;
+    let json_str = stdout[start_pos..start_pos + end_pos].trim();
+    
+    serde_json::from_str(json_str).ok()
+}
+
 /// ====
 /// Core Nautilus server logic, replace it with your own
 /// relavant structs and process_data endpoint.
@@ -162,12 +176,12 @@ pub async fn process_data(
         )));
     }
 
-    // Parse the stdout JSON response from Node.js task
-    let json_data: serde_json::Value = serde_json::from_str(&task_output.stdout)
-        .unwrap_or_else(|e| serde_json::json!({
+    // Extract JSON result from stdout using delimiters
+    let json_data: serde_json::Value = extract_task_result(&task_output.stdout)
+        .unwrap_or_else(|| serde_json::json!({
             "status": "failed",
             "operation": "default",
-            "error": format!("Failed to parse task output: {}", e),
+            "error": "Failed to extract task result from output",
             "raw_output": task_output.stdout
         }));
 
@@ -253,12 +267,12 @@ pub async fn embedding_ingest(
         EnclaveError::GenericError(format!("Failed to execute embedding ingest task: {}", e))
     })?;
 
-    // Parse the stdout JSON response from Node.js task
-    let json_data: serde_json::Value = serde_json::from_str(&task_output.stdout)
-        .unwrap_or_else(|e| serde_json::json!({
+    // Extract JSON result from stdout using delimiters
+    let json_data: serde_json::Value = extract_task_result(&task_output.stdout)
+        .unwrap_or_else(|| serde_json::json!({
             "status": "failed",
             "operation": "embedding",
-            "error": format!("Failed to parse task output: {}", e),
+            "error": "Failed to extract task result from output",
             "raw_output": task_output.stdout
         }));
 
@@ -344,12 +358,12 @@ pub async fn retrieve_messages(
         EnclaveError::GenericError(format!("Failed to execute message retrieval task: {}", e))
     })?;
 
-    // Parse the stdout JSON response from Node.js task
-    let json_data: serde_json::Value = serde_json::from_str(&task_output.stdout)
-        .unwrap_or_else(|e| serde_json::json!({
+    // Extract JSON result from stdout using delimiters
+    let json_data: serde_json::Value = extract_task_result(&task_output.stdout)
+        .unwrap_or_else(|| serde_json::json!({
             "status": "failed",
             "operation": "retrieve",
-            "error": format!("Failed to parse task output: {}", e),
+            "error": "Failed to extract task result from output",
             "raw_output": task_output.stdout
         }));
 
@@ -429,12 +443,12 @@ pub async fn retrieve_messages_by_blob_ids(
         EnclaveError::GenericError(format!("Failed to execute blob ID retrieval task: {}", e))
     })?;
 
-    // Parse the stdout JSON response from Node.js task
-    let json_data: serde_json::Value = serde_json::from_str(&task_output.stdout)
-        .unwrap_or_else(|e| serde_json::json!({
+    // Extract JSON result from stdout using delimiters
+    let json_data: serde_json::Value = extract_task_result(&task_output.stdout)
+        .unwrap_or_else(|| serde_json::json!({
             "status": "failed",
             "operation": "retrieve-by-blob-ids",
-            "error": format!("Failed to parse task output: {}", e),
+            "error": "Failed to extract task result from output",
             "raw_output": task_output.stdout
         }));
 
