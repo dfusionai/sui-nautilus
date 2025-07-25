@@ -7,11 +7,8 @@ use axum::{extract::State, Json};
 use fastcrypto::traits::Signer;
 use fastcrypto::{encoding::Encoding, traits::ToFromBytes};
 use fastcrypto::{encoding::Hex, traits::KeyPair as FcKeyPair};
-use nsm_api::api::{Request as NsmRequest, Response as NsmResponse};
-use nsm_api::driver;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_bytes::ByteBuf;
 use serde_repr::Deserialize_repr;
 use serde_repr::Serialize_repr;
 use std::collections::HashMap;
@@ -33,7 +30,7 @@ pub struct IntentMessage<T: Serialize> {
 }
 
 /// Intent scope enum. Add new scope here if needed, each corresponds to a
-g/// scope for signing. Replace with your own intent per message type being signed by the enclave.
+/// scope for signing. Replace with your own intent per message type being signed by the enclave.
 #[derive(Serialize_repr, Deserialize_repr, Debug)]
 #[repr(u8)]
 pub enum IntentScope {
@@ -97,13 +94,13 @@ pub struct GetAttestationResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AttestationInfo {
-    pub enclaveId: String,
-    pub attestationDocument: String,
+    pub enclave_id: String,
+    pub attestation_document: String,
 }
 /// Endpoint that returns an attestation committed
 /// to the enclave's public key.
 pub async fn get_attestation(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
 ) -> Result<Json<GetAttestationResponse>, EnclaveError> {
     info!("get attestation called");
 
@@ -136,8 +133,8 @@ pub async fn get_attestation(
     let mock_response = GetAttestationResponse {
         success: true,
         attestation: AttestationInfo {
-            enclaveId: "i-0a1b2c3d4e5f6g7h8".to_string(),
-            attestationDocument: "mock-base64-attestation-document".to_string(),
+            enclave_id: "i-0a1b2c3d4e5f6g7h8".to_string(),
+            attestation_document: "mock-base64-attestation-document".to_string(),
         },
     };
 
