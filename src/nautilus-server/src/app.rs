@@ -89,6 +89,10 @@ pub struct BlobFileIdPair {
     pub on_chain_file_obj_id: String,
     #[serde(rename = "policyObjectId")]
     pub policy_object_id: String,
+    /// Optional array of message indices to retrieve from the file.
+    /// If not provided, all messages in the file will be retrieved.
+    #[serde(rename = "messageIndices")]
+    pub message_indices: Option<Vec<u32>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

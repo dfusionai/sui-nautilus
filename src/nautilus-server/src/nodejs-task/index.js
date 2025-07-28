@@ -737,33 +737,53 @@ async function runRetrieveOperation() {
 }
 
 async function runRetrieveByBlobIdsOperation() {
-  console.log("📦 Running Message Retrieval by Blob IDs Operation...");
+  console.log("📦 Running Optimized Message Retrieval by Blob IDs with Message Indices...");
   
   try {
     console.log(`📊 Processing ${parsedArgs.blobFilePairs.length} blob file pairs...`);
     
-    const decryptedMessages = [];
+    const retrievedMessages = [];
     
-    // Process each blob file pair
-    for (let i = 0; i < parsedArgs.blobFilePairs.length; i++) {
-      const pair = parsedArgs.blobFilePairs[i];
-      const blobId = pair.walrusBlobId;
-      const onChainFileObjId = pair.onChainFileObjId;
-      const policyObjectId = pair.policyObjectId;
+    // Group pairs by blob ID to optimize file downloads
+    const fileGroups = {};
+    for (const pair of parsedArgs.blobFilePairs) {
+      const key = `${pair.walrusBlobId}-${pair.onChainFileObjId}-${pair.policyObjectId}`;
+      if (!fileGroups[key]) {
+        fileGroups[key] = {
+          walrusBlobId: pair.walrusBlobId,
+          onChainFileObjId: pair.onChainFileObjId,
+          policyObjectId: pair.policyObjectId,
+          messageIndices: new Set()
+        };
+      }
       
-      console.log(`📦 Processing pair ${i + 1}/${parsedArgs.blobFilePairs.length}`);
-      console.log(`   Blob ID: ${blobId}`);
-      console.log(`   File ID: ${onChainFileObjId}`);
-      console.log(`   Policy ID: ${policyObjectId}`);
+      // Collect all message indices for this file
+      if (pair.messageIndices && Array.isArray(pair.messageIndices)) {
+        pair.messageIndices.forEach(index => fileGroups[key].messageIndices.add(index));
+      } else {
+        // If no indices specified, mark as "all messages"
+        fileGroups[key].messageIndices = null;
+      }
+    }
+    
+    console.log(`📦 Optimized to ${Object.keys(fileGroups).length} unique file downloads`);
+    
+    // Process each unique file group
+    for (const [key, group] of Object.entries(fileGroups)) {
+      const { walrusBlobId, onChainFileObjId, policyObjectId, messageIndices } = group;
+      
+      console.log(`📥 Processing file: ${walrusBlobId} (${onChainFileObjId})`);
+      const indicesInfo = messageIndices ? `indices: ${Array.from(messageIndices).join(',')}` : 'all messages';
+      console.log(`   Retrieving: ${indicesInfo}`);
       
       try {
-        // Step 1: Fetch encrypted message from Walrus
-        console.log(`📥 Fetching encrypted message from Walrus...`);
-        const encryptedMessage = await services.blockchain.walrus.fetchEncryptedFile(blobId);
+        // Step 1: Fetch encrypted file from Walrus (once per unique file)
+        console.log(`📥 Fetching encrypted file from Walrus...`);
+        const encryptedFile = await services.blockchain.walrus.fetchEncryptedFile(walrusBlobId);
         
         // Step 2: Parse encrypted object
         console.log(`📦 Parsing encrypted object...`);
-        const encryptedObject = services.blockchain.seal.parseEncryptedObject(encryptedMessage);
+        const encryptedObject = services.blockchain.seal.parseEncryptedObject(encryptedFile);
         
         // Step 3: Register attestation for decryption
         console.log(`🔗 Registering attestation...`);
@@ -773,69 +793,119 @@ async function runRetrieveByBlobIdsOperation() {
           parsedArgs.address
         );
         
-        // Step 4: Decrypt message using the specific on-chain file ID and policy ID for this pair
-        console.log(`🔓 Decrypting message...`);
-        const decryptedMessage = await services.blockchain.seal.decryptFile(
+        // Step 4: Decrypt file once
+        console.log(`🔓 Decrypting refined file...`);
+        const decryptedFile = await services.blockchain.seal.decryptFile(
           encryptedObject.id,
           attestationObjId,
-          encryptedMessage,
+          encryptedFile,
           parsedArgs.address,
-          onChainFileObjId, // Use the specific on-chain file ID for this pair
-          policyObjectId, // Use the specific policy ID for this pair
+          onChainFileObjId,
+          policyObjectId,
           parsedArgs.threshold,
           services.blockchain.sui
         );
         
-        decryptedMessages.push({
-          walrus_blob_id: blobId,
-          on_chain_file_obj_id: onChainFileObjId,
-          policy_object_id: policyObjectId,
-          status: 'success',
-          message: decryptedMessage,
-          encrypted_object_id: encryptedObject.id,
-          attestation_obj_id: attestationObjId
-        });
-        
-        console.log(`✅ Successfully decrypted message from blob ${blobId}`);
+        // Step 5: Extract specific messages by indices
+        if (messageIndices === null) {
+          // Return all messages
+          if (decryptedFile.messages && Array.isArray(decryptedFile.messages)) {
+            decryptedFile.messages.forEach((message, index) => {
+              retrievedMessages.push({
+                walrus_blob_id: walrusBlobId,
+                on_chain_file_obj_id: onChainFileObjId,
+                policy_object_id: policyObjectId,
+                message_index: index,
+                status: 'success',
+                message: message,
+                encrypted_object_id: encryptedObject.id,
+                attestation_obj_id: attestationObjId
+              });
+            });
+            console.log(`✅ Retrieved all ${decryptedFile.messages.length} messages from ${walrusBlobId}`);
+          } else {
+            retrievedMessages.push({
+              walrus_blob_id: walrusBlobId,
+              on_chain_file_obj_id: onChainFileObjId,
+              policy_object_id: policyObjectId,
+              status: 'failed',
+              error: 'No messages array found in decrypted file'
+            });
+          }
+        } else {
+          // Return specific messages by indices
+          const requestedIndices = Array.from(messageIndices);
+          for (const messageIndex of requestedIndices) {
+            if (decryptedFile.messages && decryptedFile.messages[messageIndex]) {
+              retrievedMessages.push({
+                walrus_blob_id: walrusBlobId,
+                on_chain_file_obj_id: onChainFileObjId,
+                policy_object_id: policyObjectId,
+                message_index: messageIndex,
+                status: 'success',
+                message: decryptedFile.messages[messageIndex],
+                encrypted_object_id: encryptedObject.id,
+                attestation_obj_id: attestationObjId
+              });
+              console.log(`✅ Retrieved message at index ${messageIndex} from ${walrusBlobId}`);
+            } else {
+              retrievedMessages.push({
+                walrus_blob_id: walrusBlobId,
+                on_chain_file_obj_id: onChainFileObjId,
+                policy_object_id: policyObjectId,
+                message_index: messageIndex,
+                status: 'failed',
+                error: `Message not found at index ${messageIndex}`
+              });
+              console.log(`❌ Message not found at index ${messageIndex} in ${walrusBlobId}`);
+            }
+          }
+        }
         
       } catch (error) {
-        console.error(`❌ Failed to decrypt message from blob ${blobId}: ${error.message}`);
+        console.error(`❌ Failed to process file ${walrusBlobId}: ${error.message}`);
         
-        // Add failed message with error info
-        decryptedMessages.push({
-          walrus_blob_id: blobId,
-          on_chain_file_obj_id: onChainFileObjId,
-          policy_object_id: policyObjectId,
-          status: 'failed',
-          error: error.message
-        });
+        // Add failed result for this entire file group
+        const affectedIndices = messageIndices ? Array.from(messageIndices) : ['all'];
+        for (const index of affectedIndices) {
+          retrievedMessages.push({
+            walrus_blob_id: walrusBlobId,
+            on_chain_file_obj_id: onChainFileObjId,
+            policy_object_id: policyObjectId,
+            message_index: index === 'all' ? null : index,
+            status: 'failed',
+            error: error.message
+          });
+        }
       }
     }
     
-    // Return results
+    // Return optimized results
     const result = {
       status: "success",
       operation: "retrieve-by-blob-ids",
       requested_pairs: parsedArgs.blobFilePairs.map(pair => ({
         walrus_blob_id: pair.walrusBlobId,
         on_chain_file_obj_id: pair.onChainFileObjId,
-        policy_object_id: pair.policyObjectId
+        policy_object_id: pair.policyObjectId,
+        message_indices: pair.messageIndices || null
       })),
-      results: decryptedMessages,
-      total_requested: parsedArgs.blobFilePairs.length,
-      successful_decryptions: decryptedMessages.filter(msg => msg.status === 'success').length,
-      failed_decryptions: decryptedMessages.filter(msg => msg.status === 'failed').length
+      results: retrievedMessages,
+      total_files_processed: Object.keys(fileGroups).length,
+      total_messages_retrieved: retrievedMessages.length,
+      successful_retrievals: retrievedMessages.filter(msg => msg.status === 'success').length,
+      failed_retrievals: retrievedMessages.filter(msg => msg.status === 'failed').length
     };
     
-    console.log("✅ Blob ID retrieval completed!");
-    console.log(`📊 Processed ${result.total_requested} pairs (${result.successful_decryptions} successful, ${result.failed_decryptions} failed)`);
+    console.log("✅ Optimized blob ID retrieval completed!");
+    console.log(`📊 Processed ${result.total_files_processed} unique files, retrieved ${result.total_messages_retrieved} messages (${result.successful_retrievals} successful, ${result.failed_retrievals} failed)`);
     console.log("===TASK_RESULT_START===");
     console.log(JSON.stringify(result));
     console.log("===TASK_RESULT_END===");
     process.exit(0);
     
   } catch (error) {
-    console.error("💥 Blob ID retrieval operation failed:", error.message);
+    console.error("💥 Optimized blob ID retrieval operation failed:", error.message);
     
     const result = {
       status: "failed",
@@ -843,7 +913,8 @@ async function runRetrieveByBlobIdsOperation() {
       requested_pairs: parsedArgs.blobFilePairs.map(pair => ({
         walrus_blob_id: pair.walrusBlobId,
         on_chain_file_obj_id: pair.onChainFileObjId,
-        policy_object_id: pair.policyObjectId
+        policy_object_id: pair.policyObjectId,
+        message_indices: pair.messageIndices || null
       })),
       error: error.message
     };
