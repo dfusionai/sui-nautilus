@@ -136,8 +136,7 @@ class QdrantService extends BaseVectorDb {
           id: randomUUID(),
           vector: item.vector,
           payload: {
-            timestamp: new Date().toISOString(),
-            original_id: item.id.toString(),
+            ingestedAt: new Date().toISOString(),
             ...item.metadata || {}
           }
         };
