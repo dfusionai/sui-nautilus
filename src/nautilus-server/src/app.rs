@@ -57,7 +57,6 @@ pub struct TaskRequest {
 pub struct EmbeddingIngestRequest {
     #[serde(rename = "walrusBlobId")]
     pub walrus_blob_id: String,
-    pub address: String,
     #[serde(rename = "onChainFileObjId")]
     pub on_chain_file_obj_id: String,
     #[serde(rename = "policyObjectId")]
@@ -86,7 +85,6 @@ pub struct BlobFileIdPair {
 pub struct MessageBlobRetrievalRequest {
     #[serde(rename = "blobFilePairs")]
     pub blob_file_pairs: Vec<BlobFileIdPair>,
-    pub address: String,
     #[serde(rename = "policyObjectId")]
     pub policy_object_id: Option<String>, // Now optional since each pair has its own policy ID
     pub threshold: String,
@@ -227,8 +225,6 @@ pub async fn embedding_ingest(
         "embedding".to_string(),
         "--walrus-blob-id".to_string(),
         request.payload.walrus_blob_id.clone(),
-        "--address".to_string(),
-        request.payload.address.clone(),
         "--on-chain-file-obj-id".to_string(),
         request.payload.on_chain_file_obj_id.clone(),
         "--policy-object-id".to_string(),
@@ -322,8 +318,6 @@ pub async fn retrieve_messages_by_blob_ids(
         "retrieve-by-blob-ids".to_string(),
         "--blob-file-pairs".to_string(),
         blob_file_pairs_json,
-        "--address".to_string(),
-        request.payload.address.clone(),
         "--threshold".to_string(),
         request.payload.threshold.clone(),
     ];

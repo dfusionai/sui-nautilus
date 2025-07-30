@@ -25,9 +25,10 @@ class SealOperations {
     });
   }
 
-  async decryptFile(fileObjectId, attestationObjId, encryptedFile, address, onChainFileObjId, policyObjectId, threshold, suiOperations) {
+  async decryptFile(fileObjectId, attestationObjId, encryptedFile, onChainFileObjId, policyObjectId, threshold, suiOperations) {
     try {
       console.log(`🔓 Decrypting file: ${fileObjectId}`);
+      const address = suiOperations.getKeypairAddress();
 
       const sessionKey = new SessionKey({
         address,

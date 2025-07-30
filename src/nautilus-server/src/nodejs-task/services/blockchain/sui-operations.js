@@ -40,7 +40,7 @@ class SuiOperations {
     }
   }
 
-  async registerAttestation(fileObjectId, enclaveId, address) {
+  async registerAttestation(fileObjectId, enclaveId) {
     if (!this.keypair) {
       await this.initialize();
     }
@@ -56,7 +56,7 @@ class SuiOperations {
         arguments: [
           tx.pure.vector("u8", new TextEncoder().encode(enclaveId)),
           tx.pure.vector("u8", fromHex(fileObjectId)),
-          tx.pure.address(address),
+          tx.pure.address(this.getKeypairAddress()),
         ],
       });
 
@@ -127,7 +127,7 @@ class SuiOperations {
     }
   }
 
-  async sealApprove(fileObjectId, onChainFileObjId, policyObjectId, attestationObjId, address) {
+  async sealApprove(fileObjectId, onChainFileObjId, policyObjectId, attestationObjId) {
     if (!this.keypair) {
       await this.initialize();
     }
@@ -145,7 +145,7 @@ class SuiOperations {
           tx.object(onChainFileObjId),
           tx.object(policyObjectId),
           tx.object(attestationObjId),
-          tx.pure.address(address),
+          tx.pure.address(this.getKeypairAddress()),
         ],
       });
 

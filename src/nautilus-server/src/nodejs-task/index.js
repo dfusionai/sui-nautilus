@@ -65,16 +65,15 @@ console.log(`🎯 Operation: ${operation}`);
 let parsedArgs = {};
 
 if (operation === 'embedding') {
-  // Embedding operation: --operation embedding --walrus-blob-id <blobId> --address <address> --on-chain-file-obj-id <objId> --policy-object-id <policyId> --threshold <threshold> [--batch-size N] <enclaveId>
+  // Embedding operation: --operation embedding --walrus-blob-id <blobId> --on-chain-file-obj-id <objId> --policy-object-id <policyId> --threshold <threshold> [--batch-size N] <enclaveId>
   const walrusBlobIdIndex = args.indexOf('--walrus-blob-id');
-  const addressIndex = args.indexOf('--address');
   const onChainFileObjIdIndex = args.indexOf('--on-chain-file-obj-id');
   const policyObjectIdIndex = args.indexOf('--policy-object-id');
   const thresholdIndex = args.indexOf('--threshold');
   
-  if (walrusBlobIdIndex === -1 || addressIndex === -1 || onChainFileObjIdIndex === -1 || 
+  if (walrusBlobIdIndex === -1 || onChainFileObjIdIndex === -1 || 
       policyObjectIdIndex === -1 || thresholdIndex === -1 || args.length < 12) {
-    console.error("Usage for embedding: node index.js --operation embedding --walrus-blob-id <blobId> --address <address> --on-chain-file-obj-id <objId> --policy-object-id <policyId> --threshold <threshold> [--batch-size N] <enclaveId>");
+    console.error("Usage for embedding: node index.js --operation embedding --walrus-blob-id <blobId> --on-chain-file-obj-id <objId> --policy-object-id <policyId> --threshold <threshold> [--batch-size N] <enclaveId>");
     process.exit(1);
   }
 
@@ -93,7 +92,6 @@ if (operation === 'embedding') {
   parsedArgs = {
     operation: 'embedding',
     walrusBlobId: args[walrusBlobIdIndex + 1],
-    address: args[addressIndex + 1],
     onChainFileObjId: args[onChainFileObjIdIndex + 1],
     policyObjectId: args[policyObjectIdIndex + 1],
     threshold: args[thresholdIndex + 1],
@@ -103,7 +101,6 @@ if (operation === 'embedding') {
   
   console.log("📋 Embedding Operation Arguments:");
   console.log(`  Walrus Blob ID: ${parsedArgs.walrusBlobId}`);
-  console.log(`  Address: ${parsedArgs.address}`);
   console.log(`  OnChainFileObjId: ${parsedArgs.onChainFileObjId}`);
   console.log(`  PolicyObjectId: ${parsedArgs.policyObjectId}`);
   console.log(`  Threshold: ${parsedArgs.threshold}`);
@@ -113,14 +110,13 @@ if (operation === 'embedding') {
   }
   
 } else if (operation === 'retrieve-by-blob-ids') {
-  // Retrieve by blob IDs operation: --operation retrieve-by-blob-ids --blob-file-pairs <jsonString> --address <address> --threshold <threshold> <enclaveId>
+  // Retrieve by blob IDs operation: --operation retrieve-by-blob-ids --blob-file-pairs <jsonString> --threshold <threshold> <enclaveId>
   const blobFilePairsIndex = args.indexOf('--blob-file-pairs');
-  const addressIndex = args.indexOf('--address');
   const thresholdIndex = args.indexOf('--threshold');
   
-  if (blobFilePairsIndex === -1 || addressIndex === -1 || 
+  if (blobFilePairsIndex === -1 || 
       thresholdIndex === -1 || args.length < 8) {
-    console.error("Usage for retrieve-by-blob-ids: node index.js --operation retrieve-by-blob-ids --blob-file-pairs <jsonString> --address <address> --threshold <threshold> <enclaveId>");
+    console.error("Usage for retrieve-by-blob-ids: node index.js --operation retrieve-by-blob-ids --blob-file-pairs <jsonString> --threshold <threshold> <enclaveId>");
     process.exit(1);
   }
 
@@ -156,7 +152,6 @@ if (operation === 'embedding') {
   parsedArgs = {
     operation: 'retrieve-by-blob-ids',
     blobFilePairs: blobFilePairs,
-    address: args[addressIndex + 1],
     threshold: args[thresholdIndex + 1],
     enclaveId: args[args.length - 1], // Last argument is enclaveId
     processingConfig: {},
@@ -168,25 +163,23 @@ if (operation === 'embedding') {
     const indicesInfo = pair.messageIndices ? ` (indices: ${pair.messageIndices.join(',')})` : ' (all messages)';
     console.log(`    ${index + 1}. Blob ID: ${pair.walrusBlobId}, File ID: ${pair.onChainFileObjId}, Policy ID: ${pair.policyObjectId}${indicesInfo}`);
   });
-  console.log(`  Address: ${parsedArgs.address}`);
   console.log(`  Threshold: ${parsedArgs.threshold}`);
   console.log(`  Enclave ID: ${parsedArgs.enclaveId}`);
   
 } else {
-  // Default operation (refinement): <address> <blobId> <onChainFileObjId> <policyObjectId> <threshold> <enclaveId>
+  // Default operation (refinement): <blobId> <onChainFileObjId> <policyObjectId> <threshold> <enclaveId>
   if (args.length < 6) {
-    console.error("Usage: node index.js <address> <blobId> <onChainFileObjId> <policyObjectId> <threshold> <enclaveId>");
+    console.error("Usage: node index.js <blobId> <onChainFileObjId> <policyObjectId> <threshold> <enclaveId>");
     process.exit(1);
   }
   
-  const [address, blobId, onChainFileObjId, policyObjectId, threshold, enclaveId] = args.slice(0, 6);
+  const [blobId, onChainFileObjId, policyObjectId, threshold, enclaveId] = args.slice(0, 5);
 
   // Default operation doesn't need processing config
   const processingConfig = {};
   
   parsedArgs = {
     operation: 'default',
-    address,
     blobId,
     onChainFileObjId,
     policyObjectId,
@@ -195,8 +188,7 @@ if (operation === 'embedding') {
     processingConfig,
   };
   
-  console.log("📋 Default Operation Arguments:");
-  console.log(`  Address: ${address}`);
+  console.log("📋 Default Operation Arguments:");   
   console.log(`  BlobId: ${blobId}`);
   console.log(`  OnChainFileObjId: ${onChainFileObjId}`);
   console.log(`  PolicyObjectId: ${policyObjectId}`);
@@ -273,7 +265,6 @@ async function runEmbeddingOperation() {
   const attestationObjId = await services.blockchain.sui.registerAttestation(
     encryptedObject.id, 
     parsedArgs.enclaveId, 
-    parsedArgs.address
   );
   
   // Step 4: Decrypt refined data
@@ -282,7 +273,6 @@ async function runEmbeddingOperation() {
     encryptedObject.id,
     attestationObjId,
     refinedDataEncrypted,
-    parsedArgs.address,
     parsedArgs.onChainFileObjId,
     parsedArgs.policyObjectId,
     parsedArgs.threshold,
@@ -426,7 +416,6 @@ async function processMessagesByMessage(messages, services, args) {
             refined_file_blob_id: args.refinedFileBlobId, // Pass from main process
             refined_file_on_chain_id: args.refinedFileOnChainId, // Pass from main process
             policy_object_id: args.policyObjectId,
-            request_address: args.address,
             embedding_dimensions: embeddingResult.embedding.length
           }
         };
@@ -572,7 +561,6 @@ async function runRetrieveByBlobIdsOperation() {
         const attestationObjId = await services.blockchain.sui.registerAttestation(
           encryptedObject.id, 
           parsedArgs.enclaveId, 
-          parsedArgs.address
         );
         
         // Step 4: Decrypt file once
@@ -581,7 +569,6 @@ async function runRetrieveByBlobIdsOperation() {
           encryptedObject.id,
           attestationObjId,
           encryptedFile,
-          parsedArgs.address,
           onChainFileObjId,
           policyObjectId,
           parsedArgs.threshold,
@@ -724,7 +711,6 @@ async function runDefaultOperation() {
   const attestationObjId = await services.blockchain.sui.registerAttestation(
     encryptedObject.id, 
     parsedArgs.enclaveId, 
-    parsedArgs.address
   );
   
   // Step 4: Decrypt file
@@ -733,7 +719,6 @@ async function runDefaultOperation() {
     encryptedObject.id,
     attestationObjId,
     encryptedFile,
-    parsedArgs.address,
     parsedArgs.onChainFileObjId,
     parsedArgs.policyObjectId,
     parsedArgs.threshold,
