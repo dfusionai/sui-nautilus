@@ -72,7 +72,7 @@ if (operation === 'embedding') {
   const thresholdIndex = args.indexOf('--threshold');
   
   if (walrusBlobIdIndex === -1 || onChainFileObjIdIndex === -1 || 
-      policyObjectIdIndex === -1 || thresholdIndex === -1 || args.length < 12) {
+      policyObjectIdIndex === -1 || thresholdIndex === -1 || args.length < 11) {
     console.error("Usage for embedding: node index.js --operation embedding --walrus-blob-id <blobId> --on-chain-file-obj-id <objId> --policy-object-id <policyId> --threshold <threshold> [--batch-size N] <enclaveId>");
     process.exit(1);
   }
@@ -115,7 +115,7 @@ if (operation === 'embedding') {
   const thresholdIndex = args.indexOf('--threshold');
   
   if (blobFilePairsIndex === -1 || 
-      thresholdIndex === -1 || args.length < 8) {
+      thresholdIndex === -1 || args.length < 7) {
     console.error("Usage for retrieve-by-blob-ids: node index.js --operation retrieve-by-blob-ids --blob-file-pairs <jsonString> --threshold <threshold> <enclaveId>");
     process.exit(1);
   }
@@ -168,7 +168,7 @@ if (operation === 'embedding') {
   
 } else {
   // Default operation (refinement): <blobId> <onChainFileObjId> <policyObjectId> <threshold> <enclaveId>
-  if (args.length < 6) {
+  if (args.length < 5) {
     console.error("Usage: node index.js <blobId> <onChainFileObjId> <policyObjectId> <threshold> <enclaveId>");
     process.exit(1);
   }
@@ -747,7 +747,7 @@ async function runDefaultOperation() {
   
   // Step 9: Trigger embedding process directly with refined data
   console.log("🔤 Step 9: Processing embeddings directly from refined data...");
-  const embeddingResult = await processMessagesByMessage(refinedData.messages, services, {
+  processMessagesByMessage(refinedData.messages, services, {
     ...parsedArgs,
     refinedFileBlobId: metadata.blobId, // Pass refined file blob ID
     refinedFileOnChainId: onChainFileObjId, // Pass refined file on-chain ID
@@ -765,8 +765,6 @@ async function runDefaultOperation() {
     onChainFileObjId,
     blobId: metadata.blobId,
     refinementStats: refinedData.refinementStats,
-    metadata,
-    embeddingResult
   };
   
   console.log("✅ Task completed successfully!");
