@@ -17,3 +17,6 @@ secrets-policy.json
 
 /.idea
 start.sh
+CLAUDE.md
+
+/.claude

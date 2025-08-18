@@ -17,18 +17,8 @@ if (!AbortSignal.any) {
     return controller.signal;
   };
 }
-const { SuiClient, getFullnodeUrl } = require("@mysten/sui/client");
-const { Ed25519Keypair } = require("@mysten/sui/keypairs/ed25519");
-const { Transaction } = require("@mysten/sui/transactions");
-const { fromHex, toHex } = require("@mysten/sui/utils");
-const {
-  SealClient,
-  SessionKey,
-  EncryptedObject,
-  getAllowlistedKeyServers,
-} = require("@mysten/seal");
-const bech32 = require("bech32");
-const crypto = require("crypto");
+
+const ServiceFactory = require("./services/factory/service-factory");
 
 // Required environment variables that should be passed from Rust app
 const requiredEnvVars = [
@@ -37,6 +27,11 @@ const requiredEnvVars = [
   "WALRUS_AGGREGATOR_URL",
   "WALRUS_PUBLISHER_URL",
   "WALRUS_EPOCHS",
+  "OLLAMA_API_URL",
+  "OLLAMA_MODEL",
+  "QDRANT_URL",
+  "QDRANT_COLLECTION_NAME",
+  "QDRANT_API_KEY"
 ];
 
 console.log("🔧 Validating environment variables passed from Rust app...");
@@ -46,7 +41,7 @@ for (const key of requiredEnvVars) {
     missingVars.push(key);
     console.error(`❌ Missing required environment variable: ${key}`);
   } else {
-    console.log(`✅ ${key}: ${key.includes('SECRET') ? '***hidden***' : process.env[key]}`);
+    console.log(`✅ ${key}: ${key.includes('SECRET') || key.includes('API_KEY') ? '***hidden***' : process.env[key]}`);
   }
 }
 
@@ -58,346 +53,725 @@ if (missingVars.length > 0) {
 
 console.log("✅ All required environment variables are available from Rust app");
 
-// Validate required CLI arguments
+// Parse CLI arguments for different operations
 const args = process.argv.slice(2);
-if (args.length < 6) {
-  console.error("Usage: node index.js <address> <blobId> <onChainFileObjId> <policyObjectId> <threshold> <enclaveId>");
-  process.exit(1);
-}
-const [
-  address,
-  blobId,
-  onChainFileObjId,
-  policyObjectId,
-  threshold,
-  enclaveId,
-] = args;
 
-console.log("📋 CLI Arguments received:");
-console.log(`  Address: ${address}`);
-console.log(`  BlobId: ${blobId}`);
-console.log(`  OnChainFileObjId: ${onChainFileObjId}`);
-console.log(`  PolicyObjectId: ${policyObjectId}`);
-console.log(`  Threshold: ${threshold}`);
-console.log(`  EnclaveId: ${enclaveId}`);
+// Check for operation type
+const operationIndex = args.indexOf('--operation');
+const operation = operationIndex !== -1 ? args[operationIndex + 1] : 'default';
 
-// Environment variables (now passed from Rust app)
-const MOVE_PACKAGE_ID = process.env.MOVE_PACKAGE_ID;
-const SUI_SECRET_KEY = process.env.SUI_SECRET_KEY;
-const WALRUS_AGGREGATOR_URL = process.env.WALRUS_AGGREGATOR_URL;
-const WALRUS_PUBLISHER_URL = process.env.WALRUS_PUBLISHER_URL;
-const WALRUS_EPOCHS = process.env.WALRUS_EPOCHS;
+console.log(`🎯 Operation: ${operation}`);
 
-// Initialize Sui client and Seal client
-const suiClient = new SuiClient({ url: getFullnodeUrl("testnet") });
-const keyServers = getAllowlistedKeyServers("testnet") || [];
-const sealClient = new SealClient({
-  suiClient,
-  serverObjectIds: keyServers.map((id) => [id, 1]),
-  verifyKeyServers: false,
-});
+let parsedArgs = {};
 
-// Initialize keypair from secret key
-let keypair;
-try {
-  const decoded = bech32.bech32.decode(SUI_SECRET_KEY);
-  if (!decoded) throw new Error("Invalid bech32 private key format");
-  const privateKeyBytes = bech32.bech32.fromWords(decoded.words);
-  const rawSecretKey = Buffer.from(privateKeyBytes).slice(1);
-  keypair = Ed25519Keypair.fromSecretKey(rawSecretKey);
-} catch (err) {
-  console.error("Failed to initialize keypair:", err);
-  process.exit(1);
-}
-
-// --- Helper Functions ---
-
-async function fetchEncryptedFile() {
-  const walrus_url = `${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`;
-  try {
-    const res = await fetch(walrus_url, {
-      headers: { "Content-Type": "application/octet-stream" },
-      method: "GET",
-    });
-    console.log(`1. Fetching encrypted file from ${walrus_url}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-    const encryptedFile = await res.arrayBuffer();
-    if (!encryptedFile) throw new Error("Empty response from Walrus");
-    return encryptedFile;
-  } catch (err) {
-    throw new Error(`fetchEncryptedFile failed: ${err.message} ${JSON.stringify(err)} ${walrus_url}`);
+if (operation === 'embedding') {
+  // Embedding operation: --operation embedding --walrus-blob-id <blobId> --on-chain-file-obj-id <objId> --policy-object-id <policyId> --threshold <threshold> [--batch-size N] <enclaveId>
+  const walrusBlobIdIndex = args.indexOf('--walrus-blob-id');
+  const onChainFileObjIdIndex = args.indexOf('--on-chain-file-obj-id');
+  const policyObjectIdIndex = args.indexOf('--policy-object-id');
+  const thresholdIndex = args.indexOf('--threshold');
+  
+  if (walrusBlobIdIndex === -1 || onChainFileObjIdIndex === -1 || 
+      policyObjectIdIndex === -1 || thresholdIndex === -1 || args.length < 11) {
+    console.error("Usage for embedding: node index.js --operation embedding --walrus-blob-id <blobId> --on-chain-file-obj-id <objId> --policy-object-id <policyId> --threshold <threshold> [--batch-size N] <enclaveId>");
+    process.exit(1);
   }
-}
 
-async function registerAttestation(fileObjectId) {
-  try {
-    const tx = new Transaction();
-    tx.setGasBudget(10_000_000);
-    tx.setSender(keypair.getPublicKey().toSuiAddress());
-    tx.moveCall({
-      target: `${MOVE_PACKAGE_ID}::seal_manager::register_tee_attestation`,
-      arguments: [
-        tx.pure.vector("u8", new TextEncoder().encode(enclaveId)),
-        tx.pure.vector("u8", fromHex(fileObjectId)),
-        tx.pure.address(address),
-      ],
-    });
-
-    const result = await suiClient.signAndExecuteTransaction({
-      transaction: tx,
-      signer: keypair,
-      requestType: "WaitForLocalExecution",
-      options: { showEffects: true },
-    });
-
-    const attestationObjId = result?.effects?.created[0]?.reference?.objectId;
-    if (!attestationObjId) throw new Error("No attestation object created");
-    console.log(`2. Attestation object created: ${attestationObjId}`);
-    return attestationObjId;
-  } catch (err) {
-    throw new Error(`registerAttestation failed: ${err.message} ${JSON.stringify(err)} ${MOVE_PACKAGE_ID}`);
+  // Parse optional batch size
+  const batchSizeIndex = args.indexOf('--batch-size');
+  
+  const processingConfig = {};
+  if (batchSizeIndex !== -1 && args[batchSizeIndex + 1]) {
+    processingConfig.batchSize = args[batchSizeIndex + 1];
   }
-}
-
-async function decryptFile(fileObjectId, attestationObjId, encryptedFile) {
-  try {
-
-    console.log(`3. Decrypting file: fileObjectId: ${fileObjectId} attestationObjId: ${attestationObjId} address: ${address}`);
-
-    const sessionKey = new SessionKey({
-      address,
-      packageId: MOVE_PACKAGE_ID,
-      ttlMin: 10,
-      client: suiClient,
-    });
-
-    const message = sessionKey.getPersonalMessage();
-    console.log(`3.1. Personal message: ${message}`);
-    const signature = await keypair.signPersonalMessage(Buffer.from(message));
-    console.log(`3.2. Signature: ${signature.signature}`);
-    await sessionKey.setPersonalMessageSignature(signature.signature);
-
-    console.log(`4. Initializing transaction: fileObjectId: ${fileObjectId} onChainFileObjId: ${onChainFileObjId} policyObjectId: ${policyObjectId} attestationObjId: ${attestationObjId} address: ${address}`);
-
-    const tx = new Transaction();
-    tx.setGasBudget(10_000_000);
-    tx.setSender(keypair.getPublicKey().toSuiAddress());
-    tx.moveCall({
-      target: `${MOVE_PACKAGE_ID}::seal_manager::seal_approve`,
-      arguments: [
-        tx.pure.vector("u8", fromHex(fileObjectId)),
-        tx.object(onChainFileObjId),
-        tx.object(policyObjectId),
-        tx.object(attestationObjId),
-        tx.pure.address(address),
-      ],
-    });
-
-    console.log(`5. Building transaction`);
-
-    const txBytes = await tx.build({
-      client: suiClient,
-      onlyTransactionKind: true,
-    });
-
-    console.log(`6. TX bytes: ${txBytes}`);
-
-    await sealClient.fetchKeys({
-      ids: [fileObjectId],
-      txBytes,
-      sessionKey,
-      threshold: Number(threshold),
-    });
-
-    console.log(`7. Fetched keys`);
-
-    const decryptedBytes = await sealClient.decrypt({
-      data: new Uint8Array(encryptedFile),
-      sessionKey,
-      txBytes,
-    });
-
-    console.log(`8. Decrypted bytes: ${decryptedBytes}`);
-
-    const decoder = new TextDecoder("utf-8");
-    const jsonString = decoder.decode(decryptedBytes);
-    console.log(`9. JSON string: ${jsonString}`);
-    return JSON.parse(jsonString);
-  } catch (err) {
-    throw new Error(`decryptFile failed: ${err.message} ${JSON.stringify(err)} ${MOVE_PACKAGE_ID}`);
-  }
-}
-
-function processData(rawData) {
-  const refinedData = {
-    revision: rawData.revision,
-    user: rawData.user,
-    messages: [],
+  
+  // Embedding operation always stores vectors and includes embeddings
+  processingConfig.storeVectors = 'true';
+  processingConfig.includeEmbeddings = 'false'; // We don't need to include raw embeddings in response
+  
+  parsedArgs = {
+    operation: 'embedding',
+    walrusBlobId: args[walrusBlobIdIndex + 1],
+    onChainFileObjId: args[onChainFileObjIdIndex + 1],
+    policyObjectId: args[policyObjectIdIndex + 1],
+    threshold: args[thresholdIndex + 1],
+    enclaveId: args[args.length - 1], // Last argument is enclaveId
+    processingConfig,
   };
-
-  console.log(`10. Processing data: ${rawData}`);
-
-  if (rawData.chats && Array.isArray(rawData.chats)) {
-    rawData.chats.forEach(chat => {
-      if (chat.contents && Array.isArray(chat.contents)) {
-        chat.contents.forEach(msg => {
-          refinedData.messages.push({
-            id: msg.id,
-            from_id: msg.fromId?.userId || null,
-            date: msg.date ? new Date(msg.date * 1000).toISOString() : null,
-            edit_date: msg.editDate ? new Date(msg.editDate * 1000).toISOString() : null,
-            message: msg.message,
-            out: msg.out,
-            reactions: msg.reactions
-              ? {
-                  emoji: msg.reactions.recentReactions?.[0]?.reaction?.emoticon || null,
-                  count: msg.reactions.results?.[0]?.count || null,
-                }
-              : null,
-          });
-        });
-      }
-    });
-    // Optional: sort by date if you want
-    refinedData.messages.sort((a, b) => new Date(a.date) - new Date(b.date));
+  
+  console.log("📋 Embedding Operation Arguments:");
+  console.log(`  Walrus Blob ID: ${parsedArgs.walrusBlobId}`);
+  console.log(`  OnChainFileObjId: ${parsedArgs.onChainFileObjId}`);
+  console.log(`  PolicyObjectId: ${parsedArgs.policyObjectId}`);
+  console.log(`  Threshold: ${parsedArgs.threshold}`);
+  console.log(`  Enclave ID: ${parsedArgs.enclaveId}`);
+  if (Object.keys(processingConfig).length > 0) {
+    console.log(`  Processing Config:`, processingConfig);
+  }
+  
+} else if (operation === 'retrieve-by-blob-ids') {
+  // Retrieve by blob IDs operation: --operation retrieve-by-blob-ids --blob-file-pairs <jsonString> --threshold <threshold> <enclaveId>
+  const blobFilePairsIndex = args.indexOf('--blob-file-pairs');
+  const thresholdIndex = args.indexOf('--threshold');
+  
+  if (blobFilePairsIndex === -1 || 
+      thresholdIndex === -1 || args.length < 7) {
+    console.error("Usage for retrieve-by-blob-ids: node index.js --operation retrieve-by-blob-ids --blob-file-pairs <jsonString> --threshold <threshold> <enclaveId>");
+    process.exit(1);
   }
 
-  console.log(`11. Refined data: ${refinedData}`);
-
-  return refinedData;
-}
-
-async function encryptFile(refinedData) {
+  const blobFilePairsStr = args[blobFilePairsIndex + 1];
+  let blobFilePairs;
+  
   try {
-    console.log(`12. Encrypting file: policyObjectId: ${policyObjectId}`);
-    const policyObjectBytes = fromHex(policyObjectId);
-    const nonce = crypto.getRandomValues(new Uint8Array(5));
-    const id = toHex(new Uint8Array([...policyObjectBytes, ...nonce]));
-
-    console.log(`13. Encrypting file: id: ${id}`);
-    const { encryptedObject: encryptedBytes } = await sealClient.encrypt({
-      threshold: 2,
-      packageId: MOVE_PACKAGE_ID,
-      id,
-      data: new Uint8Array(new TextEncoder().encode(JSON.stringify(refinedData))),
-    });
-
-    console.log(`14. Encrypted bytes: ${encryptedBytes}`);
-    return encryptedBytes;
-  } catch (err) {
-    throw new Error(`encryptFile failed: ${err.message} ${JSON.stringify(err)} ${MOVE_PACKAGE_ID}`);
+    blobFilePairs = JSON.parse(blobFilePairsStr);
+  } catch (error) {
+    console.error("❌ Failed to parse blob file pairs JSON:", error.message);
+    process.exit(1);
   }
-}
-
-async function publishFile(encryptedData) {
-  try {
-    const uploadUrl = `${WALRUS_PUBLISHER_URL}/v1/blobs?epochs=${WALRUS_EPOCHS}`;
-
-    console.log(`15. Publishing file: uploadUrl: ${uploadUrl}`);
-
-    const response = await fetch(uploadUrl, {
-      method: "PUT",
-      body: encryptedData,
-      headers: { "Content-Type": "application/octet-stream" },
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    const data = await response.json();
-    let blobId;
-    if (data.newlyCreated) {
-      blobId = data.newlyCreated.blobObject.blobId;
-    } else if (data.alreadyCertified) {
-      blobId = data.alreadyCertified.blobId;
-    } else {
-      throw new Error("Invalid response format from Walrus");
+  
+  if (!Array.isArray(blobFilePairs) || blobFilePairs.length === 0) {
+    console.error("❌ No valid blob file pairs provided");
+    process.exit(1);
+  }
+  
+  // Validate blob file pairs structure
+  for (let i = 0; i < blobFilePairs.length; i++) {
+    const pair = blobFilePairs[i];
+    if (!pair.walrusBlobId || !pair.onChainFileObjId || !pair.policyObjectId) {
+      console.error(`❌ Invalid blob file pair at index ${i}: missing walrusBlobId, onChainFileObjId, or policyObjectId`);
+      process.exit(1);
     }
+    // Validate message indices if provided
+    if (pair.messageIndices && !Array.isArray(pair.messageIndices)) {
+      console.error(`❌ Invalid blob file pair at index ${i}: messageIndices must be an array`);
+      process.exit(1);
+    }
+  }
+  
+  parsedArgs = {
+    operation: 'retrieve-by-blob-ids',
+    blobFilePairs: blobFilePairs,
+    threshold: args[thresholdIndex + 1],
+    enclaveId: args[args.length - 1], // Last argument is enclaveId
+    processingConfig: {},
+  };
+  
+  console.log("📋 Retrieve by Blob IDs Operation Arguments:");
+  console.log(`  Blob File Pairs: ${blobFilePairs.length} pairs`);
+  blobFilePairs.forEach((pair, index) => {
+    const indicesInfo = pair.messageIndices ? ` (indices: ${pair.messageIndices.join(',')})` : ' (all messages)';
+    console.log(`    ${index + 1}. Blob ID: ${pair.walrusBlobId}, File ID: ${pair.onChainFileObjId}, Policy ID: ${pair.policyObjectId}${indicesInfo}`);
+  });
+  console.log(`  Threshold: ${parsedArgs.threshold}`);
+  console.log(`  Enclave ID: ${parsedArgs.enclaveId}`);
+  
+} else {
+  // Default operation (refinement): <blobId> <onChainFileObjId> <policyObjectId> <threshold> <enclaveId>
+  if (args.length < 5) {
+    console.error("Usage: node index.js <blobId> <onChainFileObjId> <policyObjectId> <threshold> <enclaveId>");
+    process.exit(1);
+  }
+  
+  const [blobId, onChainFileObjId, policyObjectId, threshold, enclaveId] = args.slice(0, 5);
 
-    const metadata = {
-      walrusUrl: `${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`,
-      size: data.newlyCreated?.blobObject?.size || 0,
-      storageSize: data.newlyCreated?.blobObject?.storage?.storageSize || 0,
-      blobId,
+  // Default operation doesn't need processing config
+  const processingConfig = {};
+  
+  parsedArgs = {
+    operation: 'default',
+    blobId,
+    onChainFileObjId,
+    policyObjectId,
+    threshold,
+    enclaveId,
+    processingConfig,
+  };
+  
+  console.log("📋 Default Operation Arguments:");   
+  console.log(`  BlobId: ${blobId}`);
+  console.log(`  OnChainFileObjId: ${onChainFileObjId}`);
+  console.log(`  PolicyObjectId: ${policyObjectId}`);
+  console.log(`  Threshold: ${threshold}`);
+  console.log(`  EnclaveId: ${enclaveId}`);
+}
+
+
+// --- Services ---
+let services = {};
+
+async function initializeServices() {
+  try {
+    console.log("🔧 Initializing all services...");
+    
+    // Initialize all services using factory
+    services = {
+      refinement: ServiceFactory.createRefinementService('chat'),
+      embedding: ServiceFactory.createEmbeddingService('ollama', {
+        batchSize: parseInt(process.env.EMBEDDING_BATCH_SIZE || '10')
+      }),
+      vectorDb: ServiceFactory.createVectorDbService('qdrant', {
+        batchSize: parseInt(process.env.VECTOR_BATCH_SIZE || '100')
+      }),
+      blockchain: ServiceFactory.createBlockchainServices()
     };
 
-    console.log(`16. Metadata: ${metadata}`);
-
-    return metadata;
-  } catch (err) {
-    throw new Error(`publishFile failed: ${err.message} ${JSON.stringify(err)} ${uploadUrl}`);
-  }
-}
-
-async function saveEncryptedFileOnChain(encryptedRefinedData, metadata, policyObjId) {
-  try {
-    console.log(`17. Saving encrypted file on chain: encryptedRefinedData: ${encryptedRefinedData} metadata: ${metadata} policyObjId: ${policyObjId}`);
-    const encryptedData = new Uint8Array(encryptedRefinedData);
-    const encryptedObject = EncryptedObject.parse(encryptedData);
-
-    console.log(`18. Building transaction`);
-    const tx = new Transaction();
-    tx.setGasBudget(10_000_000);
-    const metadataBytes = new Uint8Array(
-      new TextEncoder().encode(JSON.stringify(metadata))
-    );
-    tx.moveCall({
-      target: `${MOVE_PACKAGE_ID}::seal_manager::save_encrypted_file`,
-      arguments: [
-        tx.pure.vector("u8", fromHex(encryptedObject.id)),
-        tx.object(policyObjId),
-        tx.pure.vector("u8", metadataBytes),
-      ],
-    });
-
-    console.log(`19. Signing and executing transaction`);
-    const result = await suiClient.signAndExecuteTransaction({
-      transaction: tx,
-      signer: keypair,
-      requestType: "WaitForLocalExecution",
-      options: { showEffects: true },
-    });
-
-    const objId = result?.effects?.created[0]?.reference?.objectId;
-    if (!objId) throw new Error("No on-chain file object created");
-    console.log(`20. On-chain file object created: ${objId}`);
-
-    return objId;
-  } catch (err) {
-    throw new Error(`saveEncryptedFileOnChain failed: ${err.message} ${JSON.stringify(err)}`);
+    // Initialize blockchain services
+    await services.blockchain.sui.initialize();
+    
+    console.log("✅ All services initialized successfully");
+    return services;
+  } catch (error) {
+    console.error("❌ Failed to initialize services:", error.message);
+    throw error;
   }
 }
 
 // --- Main Task Runner ---
 async function runTasks() {
   try {
-    const encryptedFile = await fetchEncryptedFile();
-    const encryptedData = new Uint8Array(encryptedFile);
-    const encryptedObject = EncryptedObject.parse(encryptedData);
-    const attestationObjId = await registerAttestation(encryptedObject.id);
-    const decryptedFile = await decryptFile(
-      encryptedObject.id,
-      attestationObjId,
-      encryptedFile
-    );
-    const refinedData = processData(decryptedFile);
-    const encryptedRefinedData = await encryptFile(refinedData);
-    const metadata = await publishFile(encryptedRefinedData);
-    const onChainFileObjId = await saveEncryptedFileOnChain(
-      encryptedRefinedData,
-      metadata,
-      policyObjectId
-    );
-    console.log(
-      JSON.stringify({
-        walrusUrl: metadata.walrusUrl,
-        attestationObjId,
-        onChainFileObjId,
-        blobId: metadata.blobId,
-      })
-    );
-    process.exit(0);
+    console.log("🚀 Starting task execution...");
+    
+    // Initialize all services
+    await initializeServices();
+    
+    if (parsedArgs.operation === 'embedding') {
+      await runEmbeddingOperation();
+    } else if (parsedArgs.operation === 'retrieve-by-blob-ids') {
+      await runRetrieveByBlobIdsOperation();
+    } else {
+      await runDefaultOperation();
+    }
+    
   } catch (error) {
     console.error("💥 Task failed:", error.stack || error.message);
     process.exit(1);
   }
+}
+
+async function runEmbeddingOperation() {
+  console.log("🔤 Running Embedding Operation...");
+  
+  // Step 1: Fetch encrypted refined data from Walrus
+  console.log("📥 Step 1: Fetching encrypted refined data from Walrus...");
+  const refinedDataEncrypted = await services.blockchain.walrus.fetchEncryptedFile(parsedArgs.walrusBlobId);
+  
+  // Step 2: Parse encrypted object
+  console.log("📦 Step 2: Parsing encrypted refined data...");
+  const encryptedObject = services.blockchain.seal.parseEncryptedObject(refinedDataEncrypted);
+  
+  // Step 3: Register attestation for decryption
+  console.log("🔗 Step 3: Registering attestation...");
+  const attestationObjId = await services.blockchain.sui.registerAttestation(
+    encryptedObject.id, 
+    parsedArgs.enclaveId, 
+  );
+  
+  // Step 4: Decrypt refined data
+  console.log("🔓 Step 4: Decrypting refined data...");
+  const decryptedData = await services.blockchain.seal.decryptFile(
+    encryptedObject.id,
+    attestationObjId,
+    refinedDataEncrypted,
+    parsedArgs.onChainFileObjId,
+    parsedArgs.policyObjectId,
+    parsedArgs.threshold,
+    services.blockchain.sui
+  );
+
+  const embeddingArgs = {
+    ...parsedArgs,
+    refinedFileBlobId: parsedArgs.walrusBlobId, // Pass from main process
+    refinedFileOnChainId: parsedArgs.onChainFileObjId // Pass from main process
+  };
+
+  // Step 5: Process messages individually with embeddings
+  console.log("🔤 Step 5: Processing messages individually with embeddings...");
+  const result = await processMessagesByMessage(decryptedData.messages, services, embeddingArgs);
+  
+  if (result.status === "failed") {
+    console.error("❌ Embedding operation failed!");
+    process.exit(1); // Exit with error code to indicate failure
+  } else {
+    console.log("✅ Embedding operation completed successfully!");
+    console.log("===TASK_RESULT_START===");
+    console.log(JSON.stringify(result));
+    console.log("===TASK_RESULT_END===");
+    process.exit(0);
+  }
+}
+
+async function processMessagesByMessage(messages, services, args) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    console.log('⚠️  No messages to process');
+    return {
+      status: "success",
+      operation: "embedding",
+      processedCount: 0,
+      successfulEmbeddings: 0,
+      successfulWalrusUploads: 0,
+      successfulVectorStorages: 0,
+      errors: []
+    };
+  }
+
+  const batchSize = parseInt(args.processingConfig.batchSize || '50');
+  const stats = {
+    totalMessages: messages.length,
+    successfulEmbeddings: 0,
+    failedEmbeddings: 0,
+    successfulWalrusUploads: 0,
+    failedWalrusUploads: 0,
+    successfulVectorStorages: 0,
+    failedVectorStorages: 0,
+    errors: []
+  };
+
+  // Connect to vector database
+  if (!services.vectorDb.isConnected()) {
+    await services.vectorDb.connect();
+  }
+
+  console.log(`📊 Processing ${messages.length} messages individually...`);
+
+  // Filter messages that have text content
+  const validMessages = messages.filter(msg => 
+    msg.message && typeof msg.message === 'string' && msg.message.trim().length > 0
+  );
+
+  console.log(`📝 Found ${validMessages.length} messages with text content`);
+
+  // Process messages in batches for embedding generation
+  for (let i = 0; i < validMessages.length; i += batchSize) {
+    const batch = validMessages.slice(i, i + batchSize);
+    const batchNum = Math.floor(i / batchSize) + 1;
+    const totalBatches = Math.ceil(validMessages.length / batchSize);
+    
+    console.log(`📦 Processing batch ${batchNum}/${totalBatches} (${batch.length} messages)`);
+    
+    // Generate embeddings for this batch
+    const embeddingResults = await services.embedding.embedBatch(
+      batch.map(msg => {
+        // Format message content as: Date: datetime, From User Id: 233, Message: ...., Conversation Id: 333, Owner User Id: ...
+        const datetime = msg.date || "";
+        const fromUserId = msg.from_id || '';
+        const message = msg.message || '';
+        const conversationId = msg.chat_id || '';
+        const ownerUserId = msg.user_id || '';
+        
+        return `Date: ${datetime}, From User Id: ${fromUserId}, Message: ${message}, Conversation Id: ${conversationId}, Owner User Id: ${ownerUserId}`;
+      })
+    );
+
+    // Check if any embeddings failed - FAIL FAST approach
+    for (let j = 0; j < embeddingResults.length; j++) {
+      const embeddingResult = embeddingResults[j];
+      const message = batch[j];
+      
+      if (!embeddingResult.success) {
+        const error = `Failed to generate embedding for message ${message.id}: ${embeddingResult.error || 'Unknown error'}`;
+        console.error(`💥 EMBEDDING FAILURE - STOPPING PROCESSING: ${error}`);
+        
+        const failureResult = {
+          status: "failed",
+          operation: "embedding",
+          processedCount: 0,
+          failureReason: "embedding_generation_failed",
+          failedMessage: message.id,
+          error: error,
+          totalMessages: validMessages.length,
+          processedSoFar: stats.successfulEmbeddings
+        };
+        
+        console.log("===TASK_RESULT_START===");
+        console.log(JSON.stringify(failureResult));
+        console.log("===TASK_RESULT_END===");
+        
+        return failureResult;
+      }
+    }
+
+    // All embeddings successful - process each message
+    for (let j = 0; j < batch.length; j++) {
+      const message = batch[j];
+      const embeddingResult = embeddingResults[j];
+      
+      try {
+        stats.successfulEmbeddings++;
+        
+        console.log(`🔤 Processing message ${message.id}: embedding successful, processing...`);
+        
+        // Store vector with message index in the refined file (no individual encryption needed)
+        console.log(`💾 Storing vector for message ${message.id} with file index...`);
+        const vectorData = {
+          id: message.id,
+          vector: embeddingResult.embedding,
+          metadata: {
+            message_id: message.id,
+            message_index: i + j, // Index in the refined file
+            user_id: message.user_id,
+            chat_id: message.chat_id,
+            from_id: message.from_id,
+            // Reference to the main refined file instead of individual files
+            refined_file_blob_id: args.refinedFileBlobId, // Pass from main process
+            refined_file_on_chain_id: args.refinedFileOnChainId, // Pass from main process
+            policy_object_id: args.policyObjectId,
+            embedding_dimensions: embeddingResult.embedding.length
+          }
+        };
+        
+        const storeResult = await services.vectorDb.storeBatch([vectorData]);
+        if (storeResult[0] && storeResult[0].success) {
+          stats.successfulVectorStorages++;
+          console.log(`✅ Vector for message ${message.id} stored in vector database`);
+        } else {
+          // Vector storage failure should also fail the entire operation
+          const error = `Failed to store vector for message ${message.id}: ${storeResult[0]?.error || 'Unknown error'}`;
+          console.error(`💥 VECTOR STORAGE FAILURE - STOPPING PROCESSING: ${error}`);
+          
+          const failureResult = {
+            status: "failed",
+            operation: "embedding",
+            processedCount: 0,
+            failureReason: "vector_storage_failed",
+            failedMessage: message.id,
+            error: error,
+            totalMessages: validMessages.length,
+            processedSoFar: stats.successfulEmbeddings
+          };
+          
+          console.log("===TASK_RESULT_START===");
+          console.log(JSON.stringify(failureResult));
+          console.log("===TASK_RESULT_END===");
+          
+          return failureResult;
+        }
+        
+      } catch (error) {
+        const errorMsg = `Error processing message ${message.id}: ${error.message}`;
+        console.error(`💥 PROCESSING FAILURE - STOPPING PROCESSING: ${errorMsg}`);
+        
+        let failureReason = "processing_error";
+        if (error.message.includes('Walrus')) {
+          failureReason = "walrus_upload_failed";
+        } else if (error.message.includes('encrypt')) {
+          failureReason = "encryption_failed";
+        }
+        
+        const failureResult = {
+          status: "failed",
+          operation: "embedding",
+          processedCount: 0,
+          failureReason: failureReason,
+          failedMessage: message.id,
+          error: errorMsg,
+          totalMessages: validMessages.length,
+          processedSoFar: stats.successfulEmbeddings
+        };
+        
+        console.log("===TASK_RESULT_START===");
+        console.log(JSON.stringify(failureResult));
+        console.log("===TASK_RESULT_END===");
+        
+        return failureResult;
+      }
+    }
+
+    // Small delay between batches
+    if (i + batchSize < validMessages.length) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+
+  // If we reach here, all messages were processed successfully
+  const result = {
+    status: "success",
+    operation: "embedding",
+    processedCount: validMessages.length,
+    totalMessages: validMessages.length,
+    successfulEmbeddings: stats.successfulEmbeddings,
+    successfulWalrusUploads: stats.successfulWalrusUploads,
+    successfulVectorStorages: stats.successfulVectorStorages,
+    message: "All messages processed successfully"
+  };
+
+  console.log(`✅ All ${validMessages.length} messages processed successfully!`);
+  console.log(`📊 Final Stats: ${stats.successfulEmbeddings} embeddings, ${stats.successfulWalrusUploads} uploads, ${stats.successfulVectorStorages} vectors stored`);
+  
+  // Output the final result with delimiter for parsing
+  console.log("===TASK_RESULT_START===");
+  console.log(JSON.stringify(result));
+  console.log("===TASK_RESULT_END===");
+  
+  return result;
+}
+
+
+async function runRetrieveByBlobIdsOperation() {
+  console.log("📦 Running Optimized Message Retrieval by Blob IDs with Message Indices...");
+  
+  try {
+    console.log(`📊 Processing ${parsedArgs.blobFilePairs.length} blob file pairs...`);
+    
+    const retrievedMessages = [];
+    
+    // Group pairs by blob ID to optimize file downloads
+    const fileGroups = {};
+    for (const pair of parsedArgs.blobFilePairs) {
+      const key = `${pair.walrusBlobId}-${pair.onChainFileObjId}-${pair.policyObjectId}`;
+      if (!fileGroups[key]) {
+        fileGroups[key] = {
+          walrusBlobId: pair.walrusBlobId,
+          onChainFileObjId: pair.onChainFileObjId,
+          policyObjectId: pair.policyObjectId,
+          messageIndices: new Set()
+        };
+      }
+      
+      // Collect all message indices for this file
+      if (pair.messageIndices && Array.isArray(pair.messageIndices)) {
+        pair.messageIndices.forEach(index => fileGroups[key].messageIndices.add(index));
+      } else {
+        // If no indices specified, mark as "all messages"
+        fileGroups[key].messageIndices = null;
+      }
+    }
+    
+    console.log(`📦 Optimized to ${Object.keys(fileGroups).length} unique file downloads`);
+    
+    // Process each unique file group
+    for (const [key, group] of Object.entries(fileGroups)) {
+      const { walrusBlobId, onChainFileObjId, policyObjectId, messageIndices } = group;
+      
+      console.log(`📥 Processing file: ${walrusBlobId} (${onChainFileObjId})`);
+      const indicesInfo = messageIndices ? `indices: ${Array.from(messageIndices).join(',')}` : 'all messages';
+      console.log(`   Retrieving: ${indicesInfo}`);
+      
+      try {
+        // Step 1: Fetch encrypted file from Walrus (once per unique file)
+        console.log(`📥 Fetching encrypted file from Walrus...`);
+        const encryptedFile = await services.blockchain.walrus.fetchEncryptedFile(walrusBlobId);
+        
+        // Step 2: Parse encrypted object
+        console.log(`📦 Parsing encrypted object...`);
+        const encryptedObject = services.blockchain.seal.parseEncryptedObject(encryptedFile);
+        
+        // Step 3: Register attestation for decryption
+        console.log(`🔗 Registering attestation...`);
+        const attestationObjId = await services.blockchain.sui.registerAttestation(
+          encryptedObject.id, 
+          parsedArgs.enclaveId, 
+        );
+        
+        // Step 4: Decrypt file once
+        console.log(`🔓 Decrypting refined file...`);
+        const decryptedFile = await services.blockchain.seal.decryptFile(
+          encryptedObject.id,
+          attestationObjId,
+          encryptedFile,
+          onChainFileObjId,
+          policyObjectId,
+          parsedArgs.threshold,
+          services.blockchain.sui
+        );
+        
+        // Step 5: Extract specific messages by indices
+        if (messageIndices === null) {
+          // Return all messages
+          if (decryptedFile.messages && Array.isArray(decryptedFile.messages)) {
+            decryptedFile.messages.forEach((message, index) => {
+              retrievedMessages.push({
+                walrus_blob_id: walrusBlobId,
+                on_chain_file_obj_id: onChainFileObjId,
+                policy_object_id: policyObjectId,
+                message_index: index,
+                status: 'success',
+                message: message,
+                encrypted_object_id: encryptedObject.id,
+                attestation_obj_id: attestationObjId
+              });
+            });
+            console.log(`✅ Retrieved all ${decryptedFile.messages.length} messages from ${walrusBlobId}`);
+          } else {
+            retrievedMessages.push({
+              walrus_blob_id: walrusBlobId,
+              on_chain_file_obj_id: onChainFileObjId,
+              policy_object_id: policyObjectId,
+              status: 'failed',
+              error: 'No messages array found in decrypted file'
+            });
+          }
+        } else {
+          // Return specific messages by indices
+          const requestedIndices = Array.from(messageIndices);
+          for (const messageIndex of requestedIndices) {
+            if (decryptedFile.messages && decryptedFile.messages[messageIndex]) {
+              retrievedMessages.push({
+                walrus_blob_id: walrusBlobId,
+                on_chain_file_obj_id: onChainFileObjId,
+                policy_object_id: policyObjectId,
+                message_index: messageIndex,
+                status: 'success',
+                message: decryptedFile.messages[messageIndex],
+                encrypted_object_id: encryptedObject.id,
+                attestation_obj_id: attestationObjId
+              });
+              console.log(`✅ Retrieved message at index ${messageIndex} from ${walrusBlobId}`);
+            } else {
+              retrievedMessages.push({
+                walrus_blob_id: walrusBlobId,
+                on_chain_file_obj_id: onChainFileObjId,
+                policy_object_id: policyObjectId,
+                message_index: messageIndex,
+                status: 'failed',
+                error: `Message not found at index ${messageIndex}`
+              });
+              console.log(`❌ Message not found at index ${messageIndex} in ${walrusBlobId}`);
+            }
+          }
+        }
+        
+      } catch (error) {
+        console.error(`❌ Failed to process file ${walrusBlobId}: ${error.message}`);
+        
+        // Add failed result for this entire file group
+        const affectedIndices = messageIndices ? Array.from(messageIndices) : ['all'];
+        for (const index of affectedIndices) {
+          retrievedMessages.push({
+            walrus_blob_id: walrusBlobId,
+            on_chain_file_obj_id: onChainFileObjId,
+            policy_object_id: policyObjectId,
+            message_index: index === 'all' ? null : index,
+            status: 'failed',
+            error: error.message
+          });
+        }
+      }
+    }
+    
+    // Return optimized results
+    const result = {
+      status: "success",
+      operation: "retrieve-by-blob-ids",
+      requested_pairs: parsedArgs.blobFilePairs.map(pair => ({
+        walrus_blob_id: pair.walrusBlobId,
+        on_chain_file_obj_id: pair.onChainFileObjId,
+        policy_object_id: pair.policyObjectId,
+        message_indices: pair.messageIndices || null
+      })),
+      results: retrievedMessages,
+      total_files_processed: Object.keys(fileGroups).length,
+      total_messages_retrieved: retrievedMessages.length,
+      successful_retrievals: retrievedMessages.filter(msg => msg.status === 'success').length,
+      failed_retrievals: retrievedMessages.filter(msg => msg.status === 'failed').length
+    };
+    
+    console.log("✅ Optimized blob ID retrieval completed!");
+    console.log(`📊 Processed ${result.total_files_processed} unique files, retrieved ${result.total_messages_retrieved} messages (${result.successful_retrievals} successful, ${result.failed_retrievals} failed)`);
+    console.log("===TASK_RESULT_START===");
+    console.log(JSON.stringify(result));
+    console.log("===TASK_RESULT_END===");
+    process.exit(0);
+    
+  } catch (error) {
+    console.error("💥 Optimized blob ID retrieval operation failed:", error.message);
+    
+    const result = {
+      status: "failed",
+      operation: "retrieve-by-blob-ids",
+      requested_pairs: parsedArgs.blobFilePairs.map(pair => ({
+        walrus_blob_id: pair.walrusBlobId,
+        on_chain_file_obj_id: pair.onChainFileObjId,
+        policy_object_id: pair.policyObjectId,
+        message_indices: pair.messageIndices || null
+      })),
+      error: error.message
+    };
+    
+    console.log("===TASK_RESULT_START===");
+    console.log(JSON.stringify(result));
+    console.log("===TASK_RESULT_END===");
+    process.exit(1);
+  }
+}
+
+async function runDefaultOperation() {
+  console.log("📝 Running Default (Refinement) Operation...");
+  
+  // Step 1: Fetch encrypted file from Walrus
+  console.log("📥 Step 1: Fetching encrypted file...");
+  const encryptedFile = await services.blockchain.walrus.fetchEncryptedFile(parsedArgs.blobId);
+  
+  // Step 2: Parse encrypted object
+  console.log("📦 Step 2: Parsing encrypted object...");
+  const encryptedObject = services.blockchain.seal.parseEncryptedObject(encryptedFile);
+  
+  // Step 3: Register attestation
+  console.log("🔗 Step 3: Registering attestation...");
+  const attestationObjId = await services.blockchain.sui.registerAttestation(
+    encryptedObject.id, 
+    parsedArgs.enclaveId, 
+  );
+  
+  // Step 4: Decrypt file
+  console.log("🔓 Step 4: Decrypting file...");
+  const decryptedFile = await services.blockchain.seal.decryptFile(
+    encryptedObject.id,
+    attestationObjId,
+    encryptedFile,
+    parsedArgs.onChainFileObjId,
+    parsedArgs.policyObjectId,
+    parsedArgs.threshold,
+    services.blockchain.sui
+  );
+  
+  // Step 5: Refine data
+  console.log("📝 Step 5: Refining data...");
+  const refinedData = await services.refinement.refineData(decryptedFile);
+  
+  // Step 6: Encrypt refined data
+  console.log("🔒 Step 6: Encrypting refined data...");
+  const encryptedRefinedData = await services.blockchain.seal.encryptFile(refinedData, parsedArgs.policyObjectId);
+  
+  // Step 7: Publish to Walrus
+  console.log("📤 Step 7: Publishing to Walrus...");
+  const metadata = await services.blockchain.walrus.publishFile(encryptedRefinedData);
+  
+  // Step 8: Save on-chain
+  console.log("💾 Step 8: Saving on-chain...");
+  const onChainFileObjId = await services.blockchain.sui.saveEncryptedFileOnChain(
+    encryptedRefinedData,
+    metadata,
+    parsedArgs.policyObjectId
+  );
+  
+  // Step 9: Trigger embedding process directly with refined data
+  console.log("🔤 Step 9: Processing embeddings directly from refined data...");
+  processMessagesByMessage(refinedData.messages, services, {
+    ...parsedArgs,
+    refinedFileBlobId: metadata.blobId, // Pass refined file blob ID
+    refinedFileOnChainId: onChainFileObjId, // Pass refined file on-chain ID
+    processingConfig: {
+      batchSize: '50',
+      storeVectors: 'true',
+      includeEmbeddings: 'false'
+    }
+  });
+  
+  // Output results including embedding results
+  const result = {
+    walrusUrl: metadata.walrusUrl,
+    attestationObjId,
+    onChainFileObjId,
+    blobId: metadata.blobId,
+    refinementStats: refinedData.refinementStats,
+  };
+  
+  console.log("✅ Task completed successfully!");
+  console.log("===TASK_RESULT_START===");
+  console.log(JSON.stringify(result));
+  console.log("===TASK_RESULT_END===");
+  process.exit(0);
 }
 
 // Handle graceful shutdown

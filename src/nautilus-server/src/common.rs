@@ -33,7 +33,7 @@ pub struct IntentMessage<T: Serialize> {
 }
 
 /// Intent scope enum. Add new scope here if needed, each corresponds to a
-g/// scope for signing. Replace with your own intent per message type being signed by the enclave.
+/// scope for signing. Replace with your own intent per message type being signed by the enclave.
 #[derive(Serialize_repr, Deserialize_repr, Debug)]
 #[repr(u8)]
 pub enum IntentScope {
