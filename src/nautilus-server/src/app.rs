@@ -1,8 +1,7 @@
 // Copyright (c), Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::common::IntentMessage;
-use crate::common::{to_signed_response, IntentScope, ProcessDataRequest, ProcessedDataResponse, get_attestation};
+use crate::common::{ ProcessDataRequest, get_attestation};
 use crate::task_runner::{NodeTaskRunner, TaskConfig};
 use crate::AppState;
 use crate::EnclaveError;
@@ -10,13 +9,6 @@ use axum::extract::State;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tower_http::cors::{CorsLayer, AllowOrigin, AllowHeaders};
-use std::env;
-use axum::routing::{get, post};
-use axum::Router;
-use axum::http::{HeaderValue, Method, header::{CONTENT_TYPE, AUTHORIZATION, ACCEPT, ORIGIN, REFERER, USER_AGENT}};
-use crate::common::{health_check};
-
 /// ====
 /// Core Nautilus server logic, replace it with your own
 /// relavant structs and process_data endpoint.
@@ -26,7 +18,7 @@ use crate::common::{health_check};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TaskResponse {
     pub status: String,
-    pub data: String,
+    pub data: Option<ProcessedData>,
     pub stderr: String,
     pub exit_code: i32,
     pub execution_time_ms: u64,
@@ -60,7 +52,7 @@ pub async fn process_data(
     
     // Get the absolute path to nodejs-task
     let current_dir = std::env::current_dir().unwrap();
-    let task_path = current_dir.join("nodejs-task").to_string_lossy().into_owned();
+    let task_path = current_dir.join("src/nodejs-task").to_string_lossy().into_owned();
     
     // Prepare environment variables from AppState
     let mut env_vars = std::collections::HashMap::new();
@@ -69,14 +61,14 @@ pub async fn process_data(
     env_vars.insert("WALRUS_AGGREGATOR_URL".to_string(), state.walrus_aggregator_url().to_string());
     env_vars.insert("WALRUS_PUBLISHER_URL".to_string(), state.walrus_publisher_url().to_string());
     env_vars.insert("WALRUS_EPOCHS".to_string(), state.walrus_epochs_str().to_string());
-
+    tracing::info!("env_vars: {:?}", env_vars);
     // Configure task runner
     let task_config = TaskConfig {
         task_path,
         timeout_secs: request.payload.timeout_secs.unwrap_or(120),
         args: request.payload.args
             .map(|mut args| {
-                args.push(attestation_info.attestation.enclaveId.clone());
+                args.push(attestation_info.attestation.enclave_id.clone());
                 args
             })
             .unwrap_or_default(),
@@ -90,21 +82,20 @@ pub async fn process_data(
     })?;
 
     // If task failed, return error
-    // if task_output.exit_code != 0 {
-    //     return Err(EnclaveError::GenericError(format!(
-    //         "Task failed with exit code {}: {}",
-    //         task_output.exit_code,
-    //         task_output.stderr
-    //     )));
-    // }
-
-    // // Parse the stdout JSON
-    // let data = serde_json::from_str::<ProcessedData>(&task_output.stdout)
-    //     .map_err(|e| EnclaveError::GenericError(format!("Failed to parse task output: {}", e)))?;
+    if task_output.exit_code != 0 {
+        return Err(EnclaveError::GenericError(format!(
+            "Task failed with exit code {}: {}",
+            task_output.exit_code,
+            task_output.stderr
+        )));
+    }
+    // Parse the stdout JSON
+    let data = serde_json::from_str::<ProcessedData>(&task_output.stdout)
+        .map_err(|e| EnclaveError::GenericError(format!("Failed to parse task output: {}", e)))?;
 
     Ok(Json(TaskResponse {
         status: "success".to_string(),
-        data: task_output.stdout,
+        data: Some(data),
         stderr: task_output.stderr,
         exit_code: task_output.exit_code,
         execution_time_ms: task_output.execution_time_ms,

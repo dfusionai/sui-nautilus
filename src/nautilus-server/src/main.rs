@@ -13,6 +13,9 @@ use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Load environment variables from .env file if it exists
+    dotenv::dotenv().ok();
+    
     let eph_kp = Ed25519KeyPair::generate(&mut rand::thread_rng());
 
     // Load all environment variables required by the application
