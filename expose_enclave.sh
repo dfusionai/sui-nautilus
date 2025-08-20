@@ -13,7 +13,7 @@ SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id arn:aws:secretsman
 echo "$SECRET_JSON" > secrets.json
   --secret-id arn:aws:secretsmanager:us-east-1:227314482053:secret:dfusion-sui-secret-cnOcUh \
   --region us-east-1 \
-  --profile 227314482053_PowerUserAccess | jq -r .SecretString)
+  --profile vaughn-nitro | jq -r .SecretString)
 
 cat secrets.json | socat - VSOCK-CONNECT:$ENCLAVE_CID:7777
 socat TCP4-LISTEN:3000,reuseaddr,fork VSOCK-CONNECT:$ENCLAVE_CID:3000 &
