@@ -9,10 +9,7 @@ ENCLAVE_CID=$(nitro-cli describe-enclaves | jq -r ".[0].EnclaveCID")
 
 sleep 5
 # Secrets-block
-SECRET_JSON=$(aws secretsmanager get-secret-value \
-  --secret-id arn:aws:secretsmanager:us-east-1:227314482053:secret:dfusion-sui-secret-cnOcUh \
-  --region us-east-1 \
-  --profile vaughn-nitro | jq -r .SecretString)
+SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id arn:aws:secretsmanager:us-east-1:227314482053:secret:sui-nautilus-cGkEKb --region us-east-1 | jq -r .SecretString)
 echo "$SECRET_JSON" > secrets.json
 
 cat secrets.json | socat - VSOCK-CONNECT:$ENCLAVE_CID:7777
