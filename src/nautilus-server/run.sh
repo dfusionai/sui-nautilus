@@ -5,7 +5,7 @@
 # - Setup script for nautilus-server that acts as an init script
 # - Sets up Python and library paths
 # - Configures loopback network and /etc/hosts
-# - Waits for secrets.json to be passed from the parent instance. 
+# - Waits for secrets.json to be passed from the parent instance.
 # - Forwards VSOCK port 3000 to localhost:3000
 # - Optionally pulls secrets and sets in environmen variables.
 # - Launches nautilus-server
@@ -28,8 +28,11 @@ echo "127.0.0.66   fullnode.mainnet.sui.io" >> /etc/hosts
 echo "127.0.0.67   fullnode.testnet.sui.io" >> /etc/hosts
 echo "127.0.0.68   seal-key-server-testnet-1.mystenlabs.com" >> /etc/hosts
 echo "127.0.0.69   seal-key-server-testnet-2.mystenlabs.com" >> /etc/hosts
-echo "127.0.0.70   localhost:11434" >> /etc/hosts
-echo "127.0.0.71   localhost:6333" >> /etc/hosts
+# echo "127.0.0.70   localhost:11434" >> /etc/hosts
+# echo "127.0.0.71   localhost:6333" >> /etc/hosts
+echo "127.0.0.70   http://52.90.221.57:11434" >> /etc/hosts
+echo "127.0.0.71   http://52.90.221.57:6333" >> /etc/hosts
+
 
 
 
@@ -63,6 +66,8 @@ python3 /traffic_forwarder.py 127.0.0.68 443 3 8105 &
 python3 /traffic_forwarder.py 127.0.0.69 443 3 8106 &
 python3 /traffic_forwarder.py 127.0.0.70 443 3 8107 &
 python3 /traffic_forwarder.py 127.0.0.71 443 3 8108 &
+
+
 
 
 
