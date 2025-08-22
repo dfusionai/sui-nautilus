@@ -21,4 +21,4 @@ endpoints:
   # - localhost:11434  # Ollama embedding service
   # - localhost:6333   # Qdrant vector database
   - http://52.90.221.57:11434
-  -http://52.90.221.57:6333
+  - http://52.90.221.57:6333
