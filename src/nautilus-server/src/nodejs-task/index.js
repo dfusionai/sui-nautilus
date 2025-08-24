@@ -31,7 +31,8 @@ const requiredEnvVars = [
   "OLLAMA_MODEL",
   "QDRANT_URL",
   "QDRANT_COLLECTION_NAME",
-  "QDRANT_API_KEY"
+  "QDRANT_API_KEY",
+  "INTERNAL_ENCRYPTION_SECRET_KEY"
 ];
 
 console.log("🔧 Validating environment variables passed from Rust app...");

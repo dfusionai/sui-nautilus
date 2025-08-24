@@ -19,6 +19,7 @@ async fn main() -> Result<()> {
     // These values are stored in AWS Secrets Manager and injected via configure_enclave.sh
     let move_package_id = std::env::var("MOVE_PACKAGE_ID").expect("MOVE_PACKAGE_ID must be set");
     let sui_secret_key = std::env::var("SUI_SECRET_KEY").expect("SUI_SECRET_KEY must be set");
+    let internal_encryption_secret_key = std::env::var("INTERNAL_ENCRYPTION_SECRET_KEY").expect("INTERNAL_ENCRYPTION_SECRET_KEY must be set");
     let walrus_aggregator_url = std::env::var("WALRUS_AGGREGATOR_URL").expect("WALRUS_AGGREGATOR_URL must be set");
     let walrus_publisher_url = std::env::var("WALRUS_PUBLISHER_URL").expect("WALRUS_PUBLISHER_URL must be set");
     let walrus_epochs = std::env::var("WALRUS_EPOCHS").expect("WALRUS_EPOCHS must be set");
@@ -49,12 +50,14 @@ async fn main() -> Result<()> {
     info!("  EMBEDDING_BATCH_SIZE: {}", embedding_batch_size);
     info!("  VECTOR_BATCH_SIZE: {}", vector_batch_size);
     info!("  SUI_SECRET_KEY: ****** (hidden)");
+    info!("  INTERNAL_ENCRYPTION_SECRET_KEY: ****** (hidden)");
     info!("  QDRANT_API_KEY: {}", if qdrant_api_key.is_some() { "****** (hidden)" } else { "not set" });
 
     let state = Arc::new(AppState { 
         eph_kp, 
         move_package_id,
         sui_secret_key,
+        internal_encryption_secret_key,
         walrus_aggregator_url,
         walrus_publisher_url,
         walrus_epochs,
@@ -82,6 +85,7 @@ async fn main() -> Result<()> {
         .route("/process_data", post(process_data))
         .route("/embedding_ingest", post(embedding_ingest))
         .route("/retrieve_messages_by_blob_ids", post(retrieve_messages_by_blob_ids))
+        .route("/encrypt", post(encrypt))
         .route("/health_check", get(health_check))
         .route("/config", get(get_config))
         .with_state(state)

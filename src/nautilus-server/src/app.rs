@@ -16,6 +16,14 @@ use axum::routing::{get, post};
 use axum::Router;
 use axum::http::{HeaderValue, Method, header::{CONTENT_TYPE, AUTHORIZATION, ACCEPT, ORIGIN, REFERER, USER_AGENT}};
 use crate::common::{health_check};
+use aes_gcm::{
+    aead::{Aead, NewAead},
+    Aes256Gcm, Key, Nonce
+};
+use base64::{engine::general_purpose, Engine as _};
+use rand::RngCore;
+use serde::{Deserialize, Serialize};
+use std::env;
 
 // Helper function to extract task result from stdout using delimiters
 fn extract_task_result(stdout: &str) -> Option<serde_json::Value> {
@@ -103,6 +111,18 @@ pub struct ProcessedData {
     pub blob_id: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct EncryptRequest {
+    pub data: String,
+}
+
+#[derive(Serialize)]
+pub struct EncryptResponse {
+    pub nonce: String,
+    pub ciphertext: String,
+    pub tag: String,
+}
+
 pub async fn process_data(
     State(state): State<Arc<AppState>>,
     Json(request): Json<ProcessDataRequest<TaskRequest>>,
@@ -120,6 +140,7 @@ pub async fn process_data(
     // Core blockchain configuration
     env_vars.insert("MOVE_PACKAGE_ID".to_string(), state.move_package_id().to_string());
     env_vars.insert("SUI_SECRET_KEY".to_string(), state.sui_secret_key().to_string());
+    env_vars.insert("INTERNAL_ENCRYPTION_SECRET_KEY".to_string(), state.internal_encryption_secret_key().to_string());
     env_vars.insert("WALRUS_AGGREGATOR_URL".to_string(), state.walrus_aggregator_url().to_string());
     env_vars.insert("WALRUS_PUBLISHER_URL".to_string(), state.walrus_publisher_url().to_string());
     env_vars.insert("WALRUS_EPOCHS".to_string(), state.walrus_epochs_str().to_string());
@@ -200,6 +221,7 @@ pub async fn embedding_ingest(
     // Core blockchain configuration
     env_vars.insert("MOVE_PACKAGE_ID".to_string(), state.move_package_id().to_string());
     env_vars.insert("SUI_SECRET_KEY".to_string(), state.sui_secret_key().to_string());
+    env_vars.insert("INTERNAL_ENCRYPTION_SECRET_KEY".to_string(), state.internal_encryption_secret_key().to_string());
     env_vars.insert("WALRUS_AGGREGATOR_URL".to_string(), state.walrus_aggregator_url().to_string());
     env_vars.insert("WALRUS_PUBLISHER_URL".to_string(), state.walrus_publisher_url().to_string());
     env_vars.insert("WALRUS_EPOCHS".to_string(), state.walrus_epochs_str().to_string());
@@ -289,6 +311,7 @@ pub async fn retrieve_messages_by_blob_ids(
     // Core blockchain configuration
     env_vars.insert("MOVE_PACKAGE_ID".to_string(), state.move_package_id().to_string());
     env_vars.insert("SUI_SECRET_KEY".to_string(), state.sui_secret_key().to_string());
+    env_vars.insert("INTERNAL_ENCRYPTION_SECRET_KEY".to_string(), state.internal_encryption_secret_key().to_string());
     env_vars.insert("WALRUS_AGGREGATOR_URL".to_string(), state.walrus_aggregator_url().to_string());
     env_vars.insert("WALRUS_PUBLISHER_URL".to_string(), state.walrus_publisher_url().to_string());
     env_vars.insert("WALRUS_EPOCHS".to_string(), state.walrus_epochs_str().to_string());
@@ -352,6 +375,60 @@ pub async fn retrieve_messages_by_blob_ids(
         stderr: task_output.stderr,
         exit_code: task_output.exit_code,
         execution_time_ms: task_output.execution_time_ms,
+    }))
+}
+
+// Encryption function
+pub fn encrypt(
+    // data: &str,
+    // key: &[u8]
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<EncryptRequest>,
+) -> Result<Json<EncryptResponse>, EnclaveError> {
+    let key_str = state.internal_encryption_secret_key();
+    let key = general_purpose::STANDARD
+        .decode(key_str)
+        .map_err(|e| EnclaveError::GenericError(format!("Failed to decode key: {}", e)))?;
+    
+    let data = request.data;
+        
+    // Validate key length (must be 32 bytes for AES-256)
+    if key.len() != 32 {
+        return Err(EnclaveError::GenericError(
+            "Invalid encryption key length. Must be 32 bytes.".to_string(),
+        ));
+    }
+
+    // Generate random nonce (12 bytes for GCM)
+    let mut nonce_bytes = [0u8; 12];
+    rand::thread_rng().fill_bytes(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    // Create cipher
+    let cipher_key = Key::from_slice(key);
+    let cipher = Aes256Gcm::new(cipher_key);
+
+    // Encrypt data
+    let ciphertext = cipher
+        .encrypt(nonce, data.as_bytes())
+        .map_err(|e| EnclaveError::GenericError(format!("Encryption failed: {}", e)))?;
+
+    // Extract tag (last 16 bytes of ciphertext)
+    if ciphertext.len() < 16 {
+        return Err(EnclaveError::GenericError(
+            "Invalid ciphertext length".to_string(),
+        ));
+    }
+
+    let tag_start = ciphertext.len() - 16;
+    let tag = &ciphertext[tag_start..];
+    let actual_ciphertext = &ciphertext[..tag_start];
+
+    // Base64 encode components
+    Ok(Json(EncryptResponse {
+        nonce: general_purpose::STANDARD.encode(nonce_bytes),
+        ciphertext: general_purpose::STANDARD.encode(actual_ciphertext),
+        tag: general_purpose::STANDARD.encode(tag),
     }))
 }
 

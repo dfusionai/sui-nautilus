@@ -34,7 +34,7 @@ if [ -f ".env" ]; then
     echo -e "${GREEN}✅ .env file exists${NC}"
     
     # Check required variables
-    required_vars=("MOVE_PACKAGE_ID" "SUI_SECRET_KEY" "WALRUS_AGGREGATOR_URL" "WALRUS_PUBLISHER_URL" "WALRUS_EPOCHS")
+    required_vars=("MOVE_PACKAGE_ID" "SUI_SECRET_KEY" "INTERNAL_ENCRYPTION_SECRET_KEY" "WALRUS_AGGREGATOR_URL" "WALRUS_PUBLISHER_URL" "WALRUS_EPOCHS")
     missing_vars=()
     
     source .env
@@ -68,6 +68,7 @@ cat > "$temp_json" << EOF
   
     "MOVE_PACKAGE_ID": "0x1234567890abcdef",
     "SUI_SECRET_KEY": "suiprivkey1qtest",
+    "INTERNAL_ENCRYPTION_SECRET_KEY": "encryptionkey1qtest",
     "WALRUS_AGGREGATOR_URL": "https://aggregator.walrus-testnet.walrus.space",
     "WALRUS_PUBLISHER_URL": "https://publisher.walrus-testnet.walrus.space",
     "WALRUS_EPOCHS": "5"
