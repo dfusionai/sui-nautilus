@@ -12,7 +12,7 @@ pub mod app;
 pub mod common;
 pub mod task_runner;
 
-/// App state, at minimum needs to maintain the ephemeral keypair and environment configuration.  
+/// App state, at minimum needs to maintain the ephemeral keypair and environment configuration.
 pub struct AppState {
     /// Ephemeral keypair on boot
     pub eph_kp: Ed25519KeyPair,
@@ -20,7 +20,10 @@ pub struct AppState {
     /// Sui blockchain configuration
     pub move_package_id: String,
     pub sui_secret_key: String,
-    
+
+    /// Internal encryption key for sensitive data
+    pub internal_encryption_secret_key: String,
+
     /// Walrus distributed storage configuration
     pub walrus_aggregator_url: String,
     pub walrus_publisher_url: String,
@@ -49,6 +52,11 @@ impl AppState {
     /// Get Sui secret key
     pub fn sui_secret_key(&self) -> &str {
         &self.sui_secret_key
+    }
+
+    /// Get internal encryption secret key
+    pub fn internal_encryption_secret_key(&self) -> &str {
+        &self.internal_encryption_secret_key
     }
 
     /// Get Walrus aggregator URL
@@ -124,6 +132,9 @@ impl AppState {
         if self.sui_secret_key.is_empty() {
             return Err("SUI_SECRET_KEY is empty".to_string());
         }
+        if self.internal_encryption_secret_key.is_empty() {
+            return Err("INTERNAL_ENCRYPTION_SECRET_KEY is empty".to_string());
+        }
         if self.walrus_aggregator_url.is_empty() {
             return Err("WALRUS_AGGREGATOR_URL is empty".to_string());
         }
@@ -194,6 +205,7 @@ mod tests {
             eph_kp: Ed25519KeyPair::generate(&mut rand::thread_rng()),
             move_package_id: "0x1234567890abcdef".to_string(),
             sui_secret_key: "suiprivkey1qtest".to_string(),
+            internal_encryption_secret_key: "encryptionkey1qtest".to_string(),
             walrus_aggregator_url: "https://aggregator.walrus-testnet.walrus.space".to_string(),
             walrus_publisher_url: "https://publisher.walrus-testnet.walrus.space".to_string(),
             walrus_epochs: "5".to_string(),
@@ -203,6 +215,7 @@ mod tests {
         let mut env_vars = HashMap::new();
         env_vars.insert("MOVE_PACKAGE_ID".to_string(), state.move_package_id().to_string());
         env_vars.insert("SUI_SECRET_KEY".to_string(), state.sui_secret_key().to_string());
+        env_vars.insert("INTERNAL_ENCRYPTION_SECRET_KEY".to_string(), state.internal_encryption_secret_key().to_string());
         env_vars.insert("WALRUS_AGGREGATOR_URL".to_string(), state.walrus_aggregator_url().to_string());
         env_vars.insert("WALRUS_PUBLISHER_URL".to_string(), state.walrus_publisher_url().to_string());
         env_vars.insert("WALRUS_EPOCHS".to_string(), state.walrus_epochs_str().to_string());
@@ -210,6 +223,7 @@ mod tests {
         // Verify that env vars from AppState are correctly mapped
         assert_eq!(env_vars.get("MOVE_PACKAGE_ID").unwrap(), "0x1234567890abcdef");
         assert_eq!(env_vars.get("SUI_SECRET_KEY").unwrap(), "suiprivkey1qtest");
+        assert_eq!(env_vars.get("INTERNAL_ENCRYPTION_SECRET_KEY").unwrap(), "encryptionkey1qtest");
         assert_eq!(env_vars.get("WALRUS_AGGREGATOR_URL").unwrap(), "https://aggregator.walrus-testnet.walrus.space");
         assert_eq!(env_vars.get("WALRUS_PUBLISHER_URL").unwrap(), "https://publisher.walrus-testnet.walrus.space");
         assert_eq!(env_vars.get("WALRUS_EPOCHS").unwrap(), "5");

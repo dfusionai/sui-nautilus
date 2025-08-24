@@ -16,6 +16,7 @@ endpoints:
   # - your-ollama-service.yourdomain.com     # Embedding service
   # - your-qdrant-service.yourdomain.com     # Vector database
   # - your-llm-backend.yourdomain.com        # LLM service (if needed)
+  # - add relay service                      # for internal encryption
 
   # Temporary localhost endpoints (remove after setting up external services)
   # - localhost:11434  # Ollama embedding service

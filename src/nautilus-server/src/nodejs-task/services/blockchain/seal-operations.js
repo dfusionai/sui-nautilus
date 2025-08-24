@@ -67,12 +67,14 @@ class SealOperations {
         sessionKey,
         txBytes,
       });
-
-      const decoder = new TextDecoder("utf-8");
-      const jsonString = decoder.decode(decryptedBytes);
+      
+      // const decoder = new TextDecoder("utf-8");
+      // const jsonString = decoder.decode(decryptedBytes);
+      
+      const rawData = decryptAES256GCM(decryptedBytes);
       
       console.log(`✅ File decrypted successfully`);
-      return JSON.parse(jsonString);
+      return JSON.parse(rawData);
     } catch (err) {
       console.error(`❌ Failed to decrypt file: ${err.message}`);
       throw new Error(`decryptFile failed: ${err.message}`);
@@ -105,8 +107,6 @@ class SealOperations {
     }
   }
 
-
-
   parseEncryptedObject(encryptedFile) {
     try {
       const encryptedData = new Uint8Array(encryptedFile);
@@ -137,6 +137,54 @@ class SealOperations {
         error: error.message,
         movePackageId: this.movePackageId
       };
+    }
+  }
+  
+  decryptAES256GCM(encryptedPackage) {
+    try {
+      console.log(`🔓 Decrypting AES-256-GCM encrypted data`);
+      
+      // Get encryption key from environment
+      const encryptionKey = process.env.INTERNAL_ENCRYPTION_SECRET_KEY;
+      if (!encryptionKey) {
+        throw new Error('INTERNAL_ENCRYPTION_SECRET_KEY environment variable is not set');
+      }
+      
+      // Decode base64 components
+      const keyBuffer = Buffer.from(encryptionKey, 'base64');
+      const nonceBuffer = Buffer.from(encryptedPackage.nonce, 'base64');
+      const ciphertextBuffer = Buffer.from(encryptedPackage.ciphertext, 'base64');
+      const tagBuffer = Buffer.from(encryptedPackage.tag, 'base64');
+      
+      // Validate key length (must be 32 bytes for AES-256)
+      if (keyBuffer.length !== 32) {
+        throw new Error('Invalid key length. Must be 32 bytes.');
+      }
+      
+      // Validate nonce length (must be 12 bytes for GCM)
+      if (nonceBuffer.length !== 12) {
+        throw new Error('Invalid nonce length. Must be 12 bytes.');
+      }
+      
+      // Create decipher
+      const decipher = crypto.createDecipheriv(
+        'aes-256-gcm',
+        keyBuffer,
+        nonceBuffer
+      );
+      
+      // Set authentication tag
+      decipher.setAuthTag(tagBuffer);
+      
+      // Decrypt data
+      let decrypted = decipher.update(ciphertextBuffer);
+      decrypted = Buffer.concat([decrypted, decipher.final()]);
+      
+      console.log(`✅ AES-256-GCM decryption successful`);
+      return decrypted.toString('utf8');
+    } catch (error) {
+      console.error(`❌ AES-256-GCM decryption failed: ${error.message}`);
+      throw new Error(`AES-256-GCM decryption failed: ${error.message}`);
     }
   }
 }
