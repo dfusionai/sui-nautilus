@@ -17,13 +17,11 @@ use axum::Router;
 use axum::http::{HeaderValue, Method, header::{CONTENT_TYPE, AUTHORIZATION, ACCEPT, ORIGIN, REFERER, USER_AGENT}};
 use crate::common::{health_check};
 use aes_gcm::{
-    aead::{Aead, NewAead},
-    Aes256Gcm, Key, Nonce
+    aead::Aead,
+    Aes256Gcm, Key, Nonce, KeyInit
 };
 use base64::{engine::general_purpose, Engine as _};
 use rand::RngCore;
-use serde::{Deserialize, Serialize};
-use std::env;
 
 // Helper function to extract task result from stdout using delimiters
 fn extract_task_result(stdout: &str) -> Option<serde_json::Value> {
@@ -379,7 +377,7 @@ pub async fn retrieve_messages_by_blob_ids(
 }
 
 // Encryption function
-pub fn encrypt(
+pub async fn encrypt(
     // data: &str,
     // key: &[u8]
     State(state): State<Arc<AppState>>,
@@ -405,8 +403,7 @@ pub fn encrypt(
     let nonce = Nonce::from_slice(&nonce_bytes);
 
     // Create cipher
-    let cipher_key = Key::from_slice(key);
-    let cipher = Aes256Gcm::new(cipher_key);
+    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
 
     // Encrypt data
     let ciphertext = cipher

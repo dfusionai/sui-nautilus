@@ -1541,9 +1541,11 @@ dependencies = [
 name = "nautilus-server"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm",
  "anyhow",
  "aws-nitro-enclaves-nsm-api",
  "axum",
+ "base64 0.21.7",
  "bcs",
  "fastcrypto",
  "rand",
