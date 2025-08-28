@@ -160,7 +160,7 @@ pub async fn process_data(
 
     // Configure task runner
     let mut args = request.payload.args.unwrap_or_default();
-    args.push(attestation_info.attestation.enclaveId.clone());
+    args.push(attestation_info.attestation.clone());
 
     let task_config = TaskConfig {
         task_path,
@@ -259,7 +259,7 @@ pub async fn embedding_ingest(
         args.push(batch_size.to_string());
     }
 
-    args.push(attestation_info.attestation.enclaveId.clone());
+    args.push(attestation_info.attestation.clone());
 
     let task_config = TaskConfig {
         task_path,
@@ -343,7 +343,7 @@ pub async fn retrieve_messages_by_blob_ids(
         request.payload.threshold.clone(),
     ];
 
-    args.push(attestation_info.attestation.enclaveId.clone());
+    args.push(attestation_info.attestation.clone());
 
     let task_config = TaskConfig {
         task_path,
