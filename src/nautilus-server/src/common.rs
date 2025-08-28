@@ -91,58 +91,41 @@ pub fn to_signed_response<T: Serialize + Clone>(
 /// Response for get attestation.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetAttestationResponse {
-    pub success: bool,
-    pub attestation: AttestationInfo,
+    /// Attestation document serialized in Hex.
+    pub attestation: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AttestationInfo {
-    pub enclaveId: String,
-    pub attestationDocument: String,
-}
-/// Endpoint that returns an attestation committed
-/// to the enclave's public key.
 pub async fn get_attestation(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<GetAttestationResponse>, EnclaveError> {
-    info!("get attestation called");
 
-    // let pk = state.eph_kp.public();
-    // let fd = driver::nsm_init();
+    let pk = state.eph_kp.public();
+    let fd = driver::nsm_init(); // this only works inside AWS Nitro Enclaves
 
-    // // Send attestation request to NSM driver with public key set.
-    // let request = NsmRequest::Attestation {
-    //     user_data: None,
-    //     nonce: None,
-    //     public_key: Some(ByteBuf::from(pk.as_bytes().to_vec())),
-    // };
-
-    // let response = driver::nsm_process_request(fd, request);
-    // match response {
-    //     NsmResponse::Attestation { document } => {
-    //         driver::nsm_exit(fd);
-    //         Ok(Json(GetAttestationResponse {
-    //             attestation: Hex::encode(document),
-    //         }))
-    //     }
-    //     _ => {
-    //         driver::nsm_exit(fd);
-    //         Err(EnclaveError::GenericError(
-    //             "unexpected response".to_string(),
-    //         ))
-    //     }
-    // }
-
-    let mock_response = GetAttestationResponse {
-        success: true,
-        attestation: AttestationInfo {
-            enclaveId: "i-0a1b2c3d4e5f6g7h8".to_string(),
-            attestationDocument: "mock-base64-attestation-document".to_string(),
-        },
+    // Send attestation request to NSM driver with public key set.
+    let request = NsmRequest::Attestation {
+        user_data: None,
+        nonce: None,
+        public_key: Some(ByteBuf::from(pk.as_bytes().to_vec())),
     };
 
-    Ok(Json(mock_response))
+    let response = driver::nsm_process_request(fd, request);
+    match response {
+        NsmResponse::Attestation { document } => {
+            driver::nsm_exit(fd);
+            Ok(Json(GetAttestationResponse {
+                attestation: Hex::encode(document),
+            }))
+        }
+        _ => {
+            driver::nsm_exit(fd);
+            Err(EnclaveError::GenericError(
+                "unexpected response".to_string(),
+            ))
+        }
+    }
 }
+
 
 /// Health check response.
 #[derive(Debug, Serialize, Deserialize)]
