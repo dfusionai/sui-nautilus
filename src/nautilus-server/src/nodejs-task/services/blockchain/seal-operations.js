@@ -67,11 +67,11 @@ class SealOperations {
         sessionKey,
         txBytes,
       });
+
+      const decoder = new TextDecoder("utf-8");
+      const jsonString = decoder.decode(decryptedBytes);
       
-      // const decoder = new TextDecoder("utf-8");
-      // const jsonString = decoder.decode(decryptedBytes);
-      
-      const rawData = decryptAES256GCM(decryptedBytes);
+      const rawData = this.decryptAES256GCM(jsonString);
       
       console.log(`✅ File decrypted successfully`);
       return JSON.parse(rawData);
@@ -144,6 +144,7 @@ class SealOperations {
     try {
       console.log(`🔓 Decrypting AES-256-GCM encrypted data`);
       
+      const encryptedPackageJson = JSON.parse(encryptedPackage);
       // Get encryption key from environment
       const encryptionKey = process.env.INTERNAL_ENCRYPTION_SECRET_KEY;
       if (!encryptionKey) {
@@ -152,9 +153,9 @@ class SealOperations {
       
       // Decode base64 components
       const keyBuffer = Buffer.from(encryptionKey, 'base64');
-      const nonceBuffer = Buffer.from(encryptedPackage.nonce, 'base64');
-      const ciphertextBuffer = Buffer.from(encryptedPackage.ciphertext, 'base64');
-      const tagBuffer = Buffer.from(encryptedPackage.tag, 'base64');
+      const nonceBuffer = Buffer.from(encryptedPackageJson.nonce, 'base64');
+      const ciphertextBuffer = Buffer.from(encryptedPackageJson.ciphertext, 'base64');
+      const tagBuffer = Buffer.from(encryptedPackageJson.tag, 'base64');
       
       // Validate key length (must be 32 bytes for AES-256)
       if (keyBuffer.length !== 32) {

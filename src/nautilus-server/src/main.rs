@@ -4,7 +4,7 @@
 use anyhow::Result;
 use axum::{routing::get, routing::post, Router};
 use fastcrypto::{ed25519::Ed25519KeyPair, traits::KeyPair};
-use nautilus_server::app::{process_data, embedding_ingest, retrieve_messages_by_blob_ids};
+use nautilus_server::app::{process_data, embedding_ingest, retrieve_messages_by_blob_ids, encrypt};
 use nautilus_server::common::{get_attestation, health_check, get_config};
 use nautilus_server::AppState;
 use std::sync::Arc;

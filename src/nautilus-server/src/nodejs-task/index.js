@@ -555,7 +555,7 @@ async function runRetrieveByBlobIdsOperation() {
         
         // Step 2: Parse encrypted object
         console.log(`📦 Parsing encrypted object...`);
-        const encryptedObject = services.blockchain.seal.parseEncryptedObject(encryptedFile);
+        const encryptedObject = await services.blockchain.seal.parseEncryptedObject(encryptedFile);
         
         // Step 3: Register attestation for decryption
         console.log(`🔗 Registering attestation...`);
@@ -705,7 +705,7 @@ async function runDefaultOperation() {
   
   // Step 2: Parse encrypted object
   console.log("📦 Step 2: Parsing encrypted object...");
-  const encryptedObject = services.blockchain.seal.parseEncryptedObject(encryptedFile);
+  const encryptedObject = await services.blockchain.seal.parseEncryptedObject(encryptedFile);
   
   // Step 3: Register attestation
   console.log("🔗 Step 3: Registering attestation...");
