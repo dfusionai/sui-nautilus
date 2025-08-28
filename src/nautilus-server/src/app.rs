@@ -304,7 +304,7 @@ pub async fn retrieve_messages_by_blob_ids(
     let task_path = current_dir.join("nodejs-task").to_string_lossy().into_owned();
 
     // Prepare environment variables from AppState
-    let mut env_vars = std::collections::HashMap::new();
+    let mut env_vars = std::collections::HashMap::new();    
 
     // Core blockchain configuration
     env_vars.insert("MOVE_PACKAGE_ID".to_string(), state.move_package_id().to_string());
