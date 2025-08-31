@@ -28,10 +28,10 @@ echo "127.0.0.66   fullnode.mainnet.sui.io" >> /etc/hosts
 echo "127.0.0.67   fullnode.testnet.sui.io" >> /etc/hosts
 echo "127.0.0.68   seal-key-server-testnet-1.mystenlabs.com" >> /etc/hosts
 echo "127.0.0.69   seal-key-server-testnet-2.mystenlabs.com" >> /etc/hosts
-# echo "127.0.0.70   localhost:11434" >> /etc/hosts
-# echo "127.0.0.71   localhost:6333" >> /etc/hosts
-echo "127.0.0.70   http://52.90.221.57:11434" >> /etc/hosts
-echo "127.0.0.71   http://52.90.221.57:6333" >> /etc/hosts
+echo "127.0.0.70   http://40.76.250.138:11434" >> /etc/hosts
+echo "127.0.0.71   http://40.76.250.138:6333" >> /etc/hosts
+echo "127.0.0.72   http://40.76.250.138:3001" >> /etc/hosts
+
 
 
 
@@ -66,6 +66,8 @@ python3 /traffic_forwarder.py 127.0.0.68 443 3 8105 &
 python3 /traffic_forwarder.py 127.0.0.69 443 3 8106 &
 python3 /traffic_forwarder.py 127.0.0.70 443 3 8107 &
 python3 /traffic_forwarder.py 127.0.0.71 443 3 8108 &
+python3 /traffic_forwarder.py 127.0.0.72 443 3 8109 &
+
 
 
 

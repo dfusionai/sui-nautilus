@@ -21,5 +21,6 @@ endpoints:
   # Temporary localhost endpoints (remove after setting up external services)
   # - localhost:11434  # Ollama embedding service
   # - localhost:6333   # Qdrant vector database
-  - http://52.90.221.57:11434
-  - http://52.90.221.57:6333
+  - http://40.76.250.138:11434
+  - http://40.76.250.138:6333
+  - http://40.76.250.138:3001
