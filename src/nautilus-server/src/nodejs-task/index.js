@@ -31,7 +31,8 @@ const requiredEnvVars = [
   "OLLAMA_MODEL",
   "QDRANT_URL",
   "QDRANT_COLLECTION_NAME",
-  "QDRANT_API_KEY"
+  "QDRANT_API_KEY",
+  "INTERNAL_ENCRYPTION_SECRET_KEY"
 ];
 
 console.log("🔧 Validating environment variables passed from Rust app...");
@@ -554,7 +555,7 @@ async function runRetrieveByBlobIdsOperation() {
         
         // Step 2: Parse encrypted object
         console.log(`📦 Parsing encrypted object...`);
-        const encryptedObject = services.blockchain.seal.parseEncryptedObject(encryptedFile);
+        const encryptedObject = await services.blockchain.seal.parseEncryptedObject(encryptedFile);
         
         // Step 3: Register attestation for decryption
         console.log(`🔗 Registering attestation...`);
@@ -704,7 +705,7 @@ async function runDefaultOperation() {
   
   // Step 2: Parse encrypted object
   console.log("📦 Step 2: Parsing encrypted object...");
-  const encryptedObject = services.blockchain.seal.parseEncryptedObject(encryptedFile);
+  const encryptedObject = await services.blockchain.seal.parseEncryptedObject(encryptedFile);
   
   // Step 3: Register attestation
   console.log("🔗 Step 3: Registering attestation...");

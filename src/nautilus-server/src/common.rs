@@ -91,17 +91,10 @@ pub fn to_signed_response<T: Serialize + Clone>(
 /// Response for get attestation.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetAttestationResponse {
-    pub success: bool,
-    pub attestation: AttestationInfo,
+    /// Attestation document serialized in Hex.
+    pub attestation: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AttestationInfo {
-    pub enclaveId: String,
-    pub attestationDocument: String,
-}
-/// Endpoint that returns an attestation committed
-/// to the enclave's public key.
 pub async fn get_attestation(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<GetAttestationResponse>, EnclaveError> {
@@ -144,6 +137,7 @@ pub async fn get_attestation(
     // Ok(Json(mock_response))
 }
 
+
 /// Health check response.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HealthCheckResponse {
@@ -171,6 +165,7 @@ pub struct ConfigInfo {
     pub walrus_epochs: String,
 
     pub sui_secret_key_configured: bool,
+    pub internal_encryption_secret_key_configured: bool,
 }
 
 /// Endpoint that health checks the enclave connectivity to all
@@ -263,6 +258,7 @@ pub async fn health_check(
             walrus_publisher_url: state.walrus_publisher_url().to_string(),
             walrus_epochs: state.walrus_epochs_str().to_string(),
             sui_secret_key_configured: !state.sui_secret_key().is_empty(),
+            internal_encryption_secret_key_configured: !state.internal_encryption_secret_key().is_empty(),
         },
     };
 
@@ -300,6 +296,7 @@ pub async fn get_config(
             walrus_publisher_url: state.walrus_publisher_url().to_string(),
             walrus_epochs: state.walrus_epochs_str().to_string(),
             sui_secret_key_configured: !state.sui_secret_key().is_empty(),
+            internal_encryption_secret_key_configured: !state.internal_encryption_secret_key().is_empty(),
         },
         validation_errors,
     };
