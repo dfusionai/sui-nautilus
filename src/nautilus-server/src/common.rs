@@ -98,9 +98,10 @@ pub struct GetAttestationResponse {
 pub async fn get_attestation(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<GetAttestationResponse>, EnclaveError> {
+    info!("get attestation called");
 
     let pk = state.eph_kp.public();
-    let fd = driver::nsm_init(); // this only works inside AWS Nitro Enclaves
+    let fd = driver::nsm_init();
 
     // Send attestation request to NSM driver with public key set.
     let request = NsmRequest::Attestation {
@@ -124,6 +125,16 @@ pub async fn get_attestation(
             ))
         }
     }
+
+    // let mock_response = GetAttestationResponse {
+    //     success: true,
+    //     attestation: AttestationInfo {
+    //         enclaveId: "i-0a1b2c3d4e5f6g7h8".to_string(),
+    //         attestationDocument: "mock-base64-attestation-document".to_string(),
+    //     },
+    // };
+
+    // Ok(Json(mock_response))
 }
 
 
