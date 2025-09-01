@@ -24,14 +24,20 @@ busybox ip link set dev lo up
 echo "127.0.0.1   localhost" > /etc/hosts
 echo "127.0.0.64   aggregator.walrus-testnet.walrus.space" >> /etc/hosts
 echo "127.0.0.65   publisher.walrus-testnet.walrus.space" >> /etc/hosts
-echo "127.0.0.66   fullnode.mainnet.sui.io" >> /etc/hosts
-echo "127.0.0.67   fullnode.testnet.sui.io" >> /etc/hosts
-echo "127.0.0.68   seal-key-server-testnet-1.mystenlabs.com" >> /etc/hosts
-echo "127.0.0.69   seal-key-server-testnet-2.mystenlabs.com" >> /etc/hosts
-# echo "127.0.0.70   localhost:11434" >> /etc/hosts
-# echo "127.0.0.71   localhost:6333" >> /etc/hosts
-echo "127.0.0.70   http://52.90.221.57:11434" >> /etc/hosts
-echo "127.0.0.71   http://52.90.221.57:6333" >> /etc/hosts
+echo "127.0.0.66   upload-relay.testnet.walrus.space" >> /etc/hosts
+echo "127.0.0.67   aggregator.walrus-mainnet.walrus.space" >> /etc/hosts
+echo "127.0.0.68   walrus-aggregator.rubynodes.io" >> /etc/hosts
+echo "127.0.0.69   upload-relay.mainnet.walrus.space" >> /etc/hosts
+echo "127.0.0.70   fullnode.testnet.sui.io" >> /etc/hosts
+echo "127.0.0.71   fullnode.mainnet.sui.io" >> /etc/hosts
+echo "127.0.0.72   seal-key-server-testnet-1.mystenlabs.com" >> /etc/hosts
+echo "127.0.0.73   seal-key-server-testnet-2.mystenlabs.com" >> /etc/hosts
+echo "127.0.0.74   seal-testnet.api.rubynodes.io" >> /etc/hosts
+echo "127.0.0.75   starter-eu-central-1.api.rubynodes.io" >> /etc/hosts
+echo "127.0.0.76   https://ollama-embedding.happyfield-d4613d37.eastus.azurecontainerapps.io" >> /etc/hosts
+echo "127.0.0.77   https://qdrant-vector-db.happyfield-d4613d37.eastus.azurecontainerapps.io" >> /etc/hosts
+echo "127.0.0.78   https://relay.vana.genesis.dfusion.ai" >> /etc/hosts
+
 
 
 
@@ -66,6 +72,14 @@ python3 /traffic_forwarder.py 127.0.0.68 443 3 8105 &
 python3 /traffic_forwarder.py 127.0.0.69 443 3 8106 &
 python3 /traffic_forwarder.py 127.0.0.70 443 3 8107 &
 python3 /traffic_forwarder.py 127.0.0.71 443 3 8108 &
+python3 /traffic_forwarder.py 127.0.0.72 443 3 8109 &
+python3 /traffic_forwarder.py 127.0.0.73 443 3 8110 &
+python3 /traffic_forwarder.py 127.0.0.74 443 3 8111 &
+python3 /traffic_forwarder.py 127.0.0.75 443 3 8112 &
+python3 /traffic_forwarder.py 127.0.0.76 443 3 8113 &
+python3 /traffic_forwarder.py 127.0.0.77 443 3 8114 &
+python3 /traffic_forwarder.py 127.0.0.78 443 3 8115 &
+
 
 
 

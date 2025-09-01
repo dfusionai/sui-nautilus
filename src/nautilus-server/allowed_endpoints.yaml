@@ -2,15 +2,23 @@
 endpoints:
   # Walrus distributed storage
   - aggregator.walrus-testnet.walrus.space
-  - publisher.walrus-testnet.walrus.space
+  - publisher.walrus-testnet.walrus.space # no public mainnet publisher without auth
+  - upload-relay.testnet.walrus.space
+  
+  - aggregator.walrus-mainnet.walrus.space
+  - walrus-aggregator.rubynodes.io
+  - upload-relay.mainnet.walrus.space
 
   # Sui blockchain nodes
-  - fullnode.mainnet.sui.io
   - fullnode.testnet.sui.io
+  - fullnode.mainnet.sui.io
 
   # Seal key servers
   - seal-key-server-testnet-1.mystenlabs.com
   - seal-key-server-testnet-2.mystenlabs.com
+  - seal-testnet.api.rubynodes.io
+  
+  - starter-eu-central-1.api.rubynodes.io
 
   # Your external AI services (replace with your actual domains)
   # - your-ollama-service.yourdomain.com     # Embedding service
@@ -20,5 +28,9 @@ endpoints:
   # Temporary localhost endpoints (remove after setting up external services)
   # - localhost:11434  # Ollama embedding service
   # - localhost:6333   # Qdrant vector database
-  - http://52.90.221.57:11434
-  - http://52.90.221.57:6333
+  # - http://40.76.250.138:11434
+  # - http://40.76.250.138:6333
+  # - http://40.76.250.138:3001
+  - https://ollama-embedding.happyfield-d4613d37.eastus.azurecontainerapps.io
+  - https://qdrant-vector-db.happyfield-d4613d37.eastus.azurecontainerapps.io
+  - https://relay.vana.genesis.dfusion.ai
