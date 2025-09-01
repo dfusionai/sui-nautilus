@@ -15,7 +15,7 @@ endpoints:
   # Your external AI services (replace with your actual domains)
   # - your-ollama-service.yourdomain.com     # Embedding service
   # - your-qdrant-service.yourdomain.com     # Vector database
-  # - your-llm-backend.yourdomain.com        # LLM service (if needed)
+  # - your-relay-backend.yourdomain.com      # relay service
 
   # Temporary localhost endpoints (remove after setting up external services)
   # - localhost:11434  # Ollama embedding service
