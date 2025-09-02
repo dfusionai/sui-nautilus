@@ -17,7 +17,8 @@ class SealOperations {
       throw new Error('MOVE_PACKAGE_ID environment variable is required');
     }
 
-    const keyServers = getAllowlistedKeyServers("testnet") || [];
+    // const keyServers = getAllowlistedKeyServers("testnet") || [];
+    const keyServers = ['0x6068c0acb197dddbacd4746a9de7f025b2ed5a5b6c1b1ab44dade4426d141da2'];
     this.sealClient = new SealClient({
       suiClient: this.suiClient,
       serverObjectIds: keyServers.map((id) => [id, 1]),
@@ -58,7 +59,7 @@ class SealOperations {
         ids: [fileObjectId],
         txBytes,
         sessionKey,
-        threshold: Number(threshold),
+        threshold: Number(threshold) || 1,
       });
 
       console.log(`🔓 Decrypting file data...`);
@@ -91,7 +92,7 @@ class SealOperations {
       console.log(`🔒 Generated encryption ID: ${id}`);
       
       const { encryptedObject: encryptedBytes } = await this.sealClient.encrypt({
-        threshold: 2,
+        threshold: 1,
         packageId: this.movePackageId,
         id,
         data: new Uint8Array(new TextEncoder().encode(JSON.stringify(refinedData))),

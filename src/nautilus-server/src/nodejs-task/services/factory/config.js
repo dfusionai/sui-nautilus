@@ -37,7 +37,7 @@ const config = {
         timeout: 30000
       },
       seal: {
-        threshold: 2,
+        threshold: 1,
         maxRetries: 3,
         timeout: 30000
       }
