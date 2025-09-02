@@ -2,7 +2,6 @@ const {
   SealClient,
   SessionKey,
   EncryptedObject,
-  getAllowlistedKeyServers,
 } = require("@mysten/seal");
 const { toHex } = require("@mysten/sui/utils");
 const crypto = require("crypto");
@@ -17,13 +16,20 @@ class SealOperations {
       throw new Error('MOVE_PACKAGE_ID environment variable is required');
     }
 
-    // const keyServers = getAllowlistedKeyServers("testnet") || [];
     const keyServers = ['0x6068c0acb197dddbacd4746a9de7f025b2ed5a5b6c1b1ab44dade4426d141da2'];
     this.sealClient = new SealClient({
       suiClient: this.suiClient,
-      serverObjectIds: keyServers.map((id) => [id, 1]),
+      serverConfigs: keyServers.map((id) => ({
+        objectId: id,
+        weight: 1,
+      })),
       verifyKeyServers: false,
     });
+    // this.sealClient = new SealClient({
+    //   suiClient: this.suiClient,
+    //   serverObjectIds: keyServers.map((id) => [id, 1]),
+    //   verifyKeyServers: false,
+    // });
   }
 
   async decryptFile(fileObjectId, attestationObjId, encryptedFile, onChainFileObjId, policyObjectId, threshold, suiOperations) {
@@ -59,7 +65,8 @@ class SealOperations {
         ids: [fileObjectId],
         txBytes,
         sessionKey,
-        threshold: Number(threshold) || 1,
+        // threshold: Number(threshold) || 1,
+        threshold: 1,
       });
 
       console.log(`🔓 Decrypting file data...`);
