@@ -76,7 +76,7 @@ class SuiOperations {
       return attestationObjId;
     } catch (err) {
       console.error(`❌ Failed to register attestation: ${err.message}`);
-      throw new Error(`registerAttestation failed: ${err.message}`);
+      throw new Error(`registerAttestation failed: ${JSON.stringify(err)}`);
     }
   }
 

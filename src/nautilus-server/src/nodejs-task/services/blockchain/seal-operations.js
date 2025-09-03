@@ -124,7 +124,7 @@ class SealOperations {
       return encryptedObject;
     } catch (err) {
       console.error(`❌ Failed to parse encrypted object: ${err.message}`);
-      throw new Error(`parseEncryptedObject failed: ${err.message}`);
+      throw new Error(`parseEncryptedObject failed:  ${JSON.stringify(err)}}`);
     }
   }
 
