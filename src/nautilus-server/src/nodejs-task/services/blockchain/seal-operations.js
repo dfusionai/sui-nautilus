@@ -115,10 +115,10 @@ class SealOperations {
 
 
 
-  parseEncryptedObject(encryptedFile) {
+  async parseEncryptedObject(encryptedFile) {
     try {
       const encryptedData = new Uint8Array(encryptedFile);
-      const encryptedObject = EncryptedObject.parse(encryptedData);
+      const encryptedObject = await EncryptedObject.parse(encryptedData);
       
       console.log(`📦 Parsed encrypted object with ID: ${encryptedObject.id}`);
       return encryptedObject;
