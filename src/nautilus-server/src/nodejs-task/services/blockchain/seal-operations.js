@@ -37,11 +37,11 @@ class SealOperations {
       console.log(`🔓 Decrypting file: ${fileObjectId}`);
       const address = suiOperations.getKeypairAddress();
 
-      const sessionKey = new SessionKey({
+      const sessionKey = await SessionKey.create({
         address,
         packageId: this.movePackageId,
         ttlMin: 10,
-        client: this.suiClient,
+        suiClient: this.suiClient,
       });
 
       const message = sessionKey.getPersonalMessage();
@@ -54,10 +54,10 @@ class SealOperations {
 
       const txBytes = await suiOperations.sealApprove(
         fileObjectId,
-        onChainFileObjId,
+        // onChainFileObjId,
         policyObjectId,
-        attestationObjId,
-        address
+        // attestationObjId,
+        // address
       );
 
       console.log(`🔐 Fetching decryption keys...`);
