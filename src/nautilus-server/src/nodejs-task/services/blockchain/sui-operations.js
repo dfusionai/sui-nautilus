@@ -127,7 +127,13 @@ class SuiOperations {
     }
   }
 
-  async sealApprove(fileObjectId, onChainFileObjId, policyObjectId, attestationObjId) {
+  async sealApprove(
+    fileObjectId,
+    // onChainFileObjId,
+    policyObjectId,
+    // attestationObjId
+  )
+   {
     if (!this.keypair) {
       await this.initialize();
     }

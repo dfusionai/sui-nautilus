@@ -32,7 +32,15 @@ class SealOperations {
     // });
   }
 
-  async decryptFile(fileObjectId, attestationObjId, encryptedFile, onChainFileObjId, policyObjectId, threshold, suiOperations) {
+  async decryptFile(
+    fileObjectId,
+    // attestationObjId,
+    encryptedFile,
+    // onChainFileObjId,
+    policyObjectId,
+    // threshold,
+    suiOperations
+  ) {
     try {
       console.log(`🔓 Decrypting file: ${fileObjectId}`);
       const address = suiOperations.getKeypairAddress();
@@ -60,14 +68,14 @@ class SealOperations {
         // address
       );
 
-      console.log(`🔐 Fetching decryption keys...`);
-      await this.sealClient.fetchKeys({
-        ids: [fileObjectId],
-        txBytes,
-        sessionKey,
-        // threshold: Number(threshold) || 1,
-        threshold: 1,
-      });
+      // console.log(`🔐 Fetching decryption keys...`);
+      // await this.sealClient.fetchKeys({
+      //   ids: [fileObjectId],
+      //   txBytes,
+      //   sessionKey,
+      //   // threshold: Number(threshold) || 1,
+      //   threshold: 1,
+      // });
 
       console.log(`🔓 Decrypting file data...`);
       const decryptedBytes = await this.sealClient.decrypt({

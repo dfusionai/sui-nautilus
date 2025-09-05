@@ -755,27 +755,27 @@ async function runDefaultOperation() {
   const encryptedObject = await services.blockchain.seal.parseEncryptedObject(encryptedFile);
   
   // Step 3: Register attestation
-  console.log("🔗 Step 3: Registering attestation...");
-  const attestationObjId = await services.blockchain.sui.registerAttestation(
-    encryptedObject.id, 
-    parsedArgs.enclaveId, 
-  );
+  // console.log("🔗 Step 3: Registering attestation...");
+  // const attestationObjId = await services.blockchain.sui.registerAttestation(
+  //   encryptedObject.id, 
+  //   parsedArgs.enclaveId, 
+  // );
   
   // Step 4: Decrypt file
   console.log("🔓 Step 4: Decrypting file...");
   const decryptedFile = await services.blockchain.seal.decryptFile(
-    encryptedObject.id,
-    attestationObjId,
+    encryptedObject.id, // seal id
+    // attestationObjId,
     encryptedFile,
-    parsedArgs.onChainFileObjId,
+    // parsedArgs.onChainFileObjId,
     parsedArgs.policyObjectId,
-    parsedArgs.threshold,
+    // parsedArgs.threshold,
     services.blockchain.sui
   );
   
   // Step 5: Process embeddings directly from decrypted data
   console.log("🔤 Step 5: Processing embeddings directly from decrypted data...");
-  processMessagesByMessage(decryptedFile, services, {
+  await processMessagesByMessage(decryptedFile, services, {
     ...parsedArgs,
     originalBlobId: parsedArgs.blobId,
     processingConfig: {
@@ -787,7 +787,7 @@ async function runDefaultOperation() {
   
   // Output results
   const result = {
-    attestationObjId,
+    // attestationObjId,
     originalBlobId: parsedArgs.blobId,
   };
   
