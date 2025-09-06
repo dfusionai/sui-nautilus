@@ -589,21 +589,21 @@ async function runRetrieveByBlobIdsOperation() {
         const encryptedObject = await services.blockchain.seal.parseEncryptedObject(encryptedFile);
         
         // Step 3: Register attestation for decryption
-        console.log(`🔗 Registering attestation...`);
-        const attestationObjId = await services.blockchain.sui.registerAttestation(
-          encryptedObject.id, 
-          parsedArgs.enclaveId, 
-        );
+        // console.log(`🔗 Registering attestation...`);
+        // const attestationObjId = await services.blockchain.sui.registerAttestation(
+        //   encryptedObject.id, 
+        //   parsedArgs.enclaveId, 
+        // );
         
         // Step 4: Decrypt file once
         console.log(`🔓 Decrypting refined file...`);
         const decryptedFile = await services.blockchain.seal.decryptFile(
           encryptedObject.id,
-          attestationObjId,
+          // attestationObjId,
           encryptedFile,
-          onChainFileObjId,
+          // onChainFileObjId,
           policyObjectId,
-          parsedArgs.threshold,
+          // parsedArgs.threshold,
           services.blockchain.sui
         );
         
