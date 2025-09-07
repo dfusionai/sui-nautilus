@@ -16,7 +16,7 @@ class SealOperations {
       throw new Error('MOVE_PACKAGE_ID environment variable is required');
     }
 
-    const keyServers = ['0x6068c0acb197dddbacd4746a9de7f025b2ed5a5b6c1b1ab44dade4426d141da2'];
+    const keyServers = ['0xda2f2fe7b82a6b734aedfe2d278f83a1db21d21a907dd8e6e19ce5e906b42afe'];
     this.sealClient = new SealClient({
       suiClient: this.suiClient,
       serverConfigs: keyServers.map((id) => ({
@@ -139,7 +139,7 @@ class SealOperations {
   async healthCheck() {
     try {
       // Test if seal client is properly initialized
-      const keyServers = getAllowlistedKeyServers("testnet") || [];
+      const keyServers = getAllowlistedKeyServers("mainnet") || [];
       
       return {
         status: 'healthy',

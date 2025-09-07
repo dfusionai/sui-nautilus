@@ -82,7 +82,7 @@ class ServiceFactory {
     
     // Initialize Sui client for Seal operations
     const { SuiClient, getFullnodeUrl } = require("@mysten/sui/client");
-    const suiClient = new SuiClient({ url: getFullnodeUrl("testnet") });
+    const suiClient = new SuiClient({ url: getFullnodeUrl("mainnet") });
     const sealService = this.createSealService(suiClient, options.seal || {});
 
     return {

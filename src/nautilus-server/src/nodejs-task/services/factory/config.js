@@ -28,7 +28,7 @@ const config = {
   blockchain: {
     providers: {
       sui: {
-        network: "testnet",
+        network: "mainnet",
         maxRetries: 3,
         timeout: 30000
       },
