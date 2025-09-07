@@ -261,33 +261,33 @@ async function runEmbeddingOperation() {
   const encryptedObject = await services.blockchain.seal.parseEncryptedObject(refinedDataEncrypted);
   
   // Step 3: Register attestation for decryption
-  console.log("🔗 Step 3: Registering attestation...");
-  const attestationObjId = await services.blockchain.sui.registerAttestation(
-    encryptedObject.id, 
-    parsedArgs.enclaveId, 
-  );
+  // console.log("🔗 Step 3: Registering attestation...");
+  // const attestationObjId = await services.blockchain.sui.registerAttestation(
+  //   encryptedObject.id, 
+  //   parsedArgs.enclaveId, 
+  // );
   
   // Step 4: Decrypt refined data
   console.log("🔓 Step 4: Decrypting refined data...");
   const decryptedData = await services.blockchain.seal.decryptFile(
     encryptedObject.id,
-    attestationObjId,
+    // attestationObjId,
     refinedDataEncrypted,
-    parsedArgs.onChainFileObjId,
+    // parsedArgs.onChainFileObjId,
     parsedArgs.policyObjectId,
-    parsedArgs.threshold,
+    // parsedArgs.threshold,
     services.blockchain.sui
   );
 
   const embeddingArgs = {
     ...parsedArgs,
-    refinedFileBlobId: parsedArgs.walrusBlobId, // Pass from main process
-    refinedFileOnChainId: parsedArgs.onChainFileObjId // Pass from main process
+    original_blob_id: parsedArgs.walrusBlobId, // Pass from main process
+    on_chain_file_obj_id: parsedArgs.onChainFileObjId // Pass from main process
   };
 
   // Step 5: Process messages individually with embeddings
   console.log("🔤 Step 5: Processing messages individually with embeddings...");
-  const result = await processMessagesByMessage(decryptedData.messages, services, embeddingArgs);
+  const result = await processMessagesByMessage(decryptedData, services, embeddingArgs);
   
   if (result.status === "failed") {
     console.error("❌ Embedding operation failed!");
@@ -447,6 +447,7 @@ async function processMessagesByMessage(rawData, services, args) {
             from_id: message.fromId?.userId || null,
             // Reference to the original file
             original_blob_id: args.originalBlobId, // Pass from main process
+            on_chain_file_obj_id: args.onChainFileObjId,
             policy_object_id: args.policyObjectId,
             embedding_dimensions: embeddingResult.embedding.length
           }
@@ -589,21 +590,21 @@ async function runRetrieveByBlobIdsOperation() {
         const encryptedObject = await services.blockchain.seal.parseEncryptedObject(encryptedFile);
         
         // Step 3: Register attestation for decryption
-        console.log(`🔗 Registering attestation...`);
-        const attestationObjId = await services.blockchain.sui.registerAttestation(
-          encryptedObject.id, 
-          parsedArgs.enclaveId, 
-        );
+        // console.log(`🔗 Registering attestation...`);
+        // const attestationObjId = await services.blockchain.sui.registerAttestation(
+        //   encryptedObject.id, 
+        //   parsedArgs.enclaveId, 
+        // );
         
         // Step 4: Decrypt file once
         console.log(`🔓 Decrypting refined file...`);
         const decryptedFile = await services.blockchain.seal.decryptFile(
           encryptedObject.id,
-          attestationObjId,
+          // attestationObjId,
           encryptedFile,
-          onChainFileObjId,
+          // onChainFileObjId,
           policyObjectId,
-          parsedArgs.threshold,
+          // parsedArgs.threshold,
           services.blockchain.sui
         );
         
@@ -636,7 +637,7 @@ async function runRetrieveByBlobIdsOperation() {
                 status: 'success',
                 message: message,
                 encrypted_object_id: encryptedObject.id,
-                attestation_obj_id: attestationObjId
+                // attestation_obj_id: attestationObjId
               });
             });
             console.log(`✅ Retrieved all ${flatMessages.length} messages from ${walrusBlobId}`);
@@ -662,7 +663,7 @@ async function runRetrieveByBlobIdsOperation() {
                 status: 'success',
                 message: flatMessages[messageIndex],
                 encrypted_object_id: encryptedObject.id,
-                attestation_obj_id: attestationObjId
+                // attestation_obj_id: attestationObjId
               });
               console.log(`✅ Retrieved message at index ${messageIndex} from ${walrusBlobId}`);
             } else {
@@ -755,27 +756,27 @@ async function runDefaultOperation() {
   const encryptedObject = await services.blockchain.seal.parseEncryptedObject(encryptedFile);
   
   // Step 3: Register attestation
-  console.log("🔗 Step 3: Registering attestation...");
-  const attestationObjId = await services.blockchain.sui.registerAttestation(
-    encryptedObject.id, 
-    parsedArgs.enclaveId, 
-  );
+  // console.log("🔗 Step 3: Registering attestation...");
+  // const attestationObjId = await services.blockchain.sui.registerAttestation(
+  //   encryptedObject.id, 
+  //   parsedArgs.enclaveId, 
+  // );
   
   // Step 4: Decrypt file
   console.log("🔓 Step 4: Decrypting file...");
   const decryptedFile = await services.blockchain.seal.decryptFile(
-    encryptedObject.id,
-    attestationObjId,
+    encryptedObject.id, // seal id
+    // attestationObjId,
     encryptedFile,
-    parsedArgs.onChainFileObjId,
+    // parsedArgs.onChainFileObjId,
     parsedArgs.policyObjectId,
-    parsedArgs.threshold,
+    // parsedArgs.threshold,
     services.blockchain.sui
   );
   
   // Step 5: Process embeddings directly from decrypted data
   console.log("🔤 Step 5: Processing embeddings directly from decrypted data...");
-  processMessagesByMessage(decryptedFile, services, {
+  await processMessagesByMessage(decryptedFile, services, {
     ...parsedArgs,
     originalBlobId: parsedArgs.blobId,
     processingConfig: {
@@ -787,7 +788,7 @@ async function runDefaultOperation() {
   
   // Output results
   const result = {
-    attestationObjId,
+    // attestationObjId,
     originalBlobId: parsedArgs.blobId,
   };
   

@@ -32,16 +32,24 @@ class SealOperations {
     // });
   }
 
-  async decryptFile(fileObjectId, attestationObjId, encryptedFile, onChainFileObjId, policyObjectId, threshold, suiOperations) {
+  async decryptFile(
+    fileObjectId,
+    // attestationObjId,
+    encryptedFile,
+    // onChainFileObjId,
+    policyObjectId,
+    // threshold,
+    suiOperations
+  ) {
     try {
       console.log(`🔓 Decrypting file: ${fileObjectId}`);
       const address = suiOperations.getKeypairAddress();
 
-      const sessionKey = new SessionKey({
+      const sessionKey = await SessionKey.create({
         address,
         packageId: this.movePackageId,
         ttlMin: 10,
-        client: this.suiClient,
+        suiClient: this.suiClient,
       });
 
       const message = sessionKey.getPersonalMessage();
@@ -54,20 +62,20 @@ class SealOperations {
 
       const txBytes = await suiOperations.sealApprove(
         fileObjectId,
-        onChainFileObjId,
+        // onChainFileObjId,
         policyObjectId,
-        attestationObjId,
-        address
+        // attestationObjId,
+        // address
       );
 
-      console.log(`🔐 Fetching decryption keys...`);
-      await this.sealClient.fetchKeys({
-        ids: [fileObjectId],
-        txBytes,
-        sessionKey,
-        // threshold: Number(threshold) || 1,
-        threshold: 1,
-      });
+      // console.log(`🔐 Fetching decryption keys...`);
+      // await this.sealClient.fetchKeys({
+      //   ids: [fileObjectId],
+      //   txBytes,
+      //   sessionKey,
+      //   // threshold: Number(threshold) || 1,
+      //   threshold: 1,
+      // });
 
       console.log(`🔓 Decrypting file data...`);
       const decryptedBytes = await this.sealClient.decrypt({

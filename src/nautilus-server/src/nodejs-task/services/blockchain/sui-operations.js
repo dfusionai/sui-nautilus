@@ -127,7 +127,13 @@ class SuiOperations {
     }
   }
 
-  async sealApprove(fileObjectId, onChainFileObjId, policyObjectId, attestationObjId) {
+  async sealApprove(
+    fileObjectId,
+    // onChainFileObjId,
+    policyObjectId,
+    // attestationObjId
+  )
+   {
     if (!this.keypair) {
       await this.initialize();
     }
@@ -142,10 +148,10 @@ class SuiOperations {
         target: `${this.movePackageId}::seal_manager::seal_approve`,
         arguments: [
           tx.pure.vector("u8", fromHex(fileObjectId)),
-          tx.object(onChainFileObjId),
+          // tx.object(onChainFileObjId),
           tx.object(policyObjectId),
-          tx.object(attestationObjId),
-          tx.pure.address(this.getKeypairAddress()),
+          // tx.object(attestationObjId),
+          // tx.pure.address(this.getKeypairAddress()),
         ],
       });
 

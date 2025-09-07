@@ -10,8 +10,25 @@ class WalrusOperations {
     }
   }
 
+  // {
+  //   "id": "", -----------------> id for by-quilt-patch-id
+  //   "blobId": "",
+  //   "blobObject": {
+  //     "id": { "id": "" }, ------------> object chain id
+  //     "registered_epoch": 155,
+  //     "blob_id": "",
+  //     "size": "445556",
+  //     "encoding_type": 1,
+  //     "certified_epoch": null,
+  //     "storage": { "id": { "id": "" }, "start_epoch": 155, "end_epoch": 156, "storage_size": "66034000" },
+  //     "deletable": true
+  //   }
+  // }
+
   async fetchEncryptedFile(blobId) {
-    const walrusUrl = `${this.aggregatorUrl}/v1/blobs/${blobId}`;
+    // const walrusUrl = `${this.aggregatorUrl}/v1/blobs/${blobId}`;
+    // https://github.com/MystenLabs/walrus-sdk-example-app/blob/6db2b791a102dc7f7ffc202ec89f2a14537177e9/src/components/ImageCard.tsx#L31
+    const walrusUrl = `${this.aggregatorUrl}/v1/blobs/by-quilt-patch-id/${blobId}`;
     
     try {
       console.log(`📥 Fetching encrypted file from ${walrusUrl}`);
