@@ -91,7 +91,9 @@ class SealOperations {
       return JSON.parse(jsonString);
     } catch (err) {
       console.error(`❌ Failed to decrypt file: ${err.message}`);
-      throw new Error(`decryptFile failed: ${err.message}`);
+      throw new Error(
+        `decryptFile failed: ${JSON.stringify(err)} >>>>>> address: ${address} sessionKey: ${sessionKey} message: ${message} signature: ${signature} txBytes: ${txBytes} decryptedBytes: ${decryptedBytes}`
+      );
     }
   }
 
