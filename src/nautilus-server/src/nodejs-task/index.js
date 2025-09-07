@@ -261,21 +261,21 @@ async function runEmbeddingOperation() {
   const encryptedObject = await services.blockchain.seal.parseEncryptedObject(refinedDataEncrypted);
   
   // Step 3: Register attestation for decryption
-  console.log("🔗 Step 3: Registering attestation...");
-  const attestationObjId = await services.blockchain.sui.registerAttestation(
-    encryptedObject.id, 
-    parsedArgs.enclaveId, 
-  );
+  // console.log("🔗 Step 3: Registering attestation...");
+  // const attestationObjId = await services.blockchain.sui.registerAttestation(
+  //   encryptedObject.id, 
+  //   parsedArgs.enclaveId, 
+  // );
   
   // Step 4: Decrypt refined data
   console.log("🔓 Step 4: Decrypting refined data...");
   const decryptedData = await services.blockchain.seal.decryptFile(
     encryptedObject.id,
-    attestationObjId,
+    // attestationObjId,
     refinedDataEncrypted,
-    parsedArgs.onChainFileObjId,
+    // parsedArgs.onChainFileObjId,
     parsedArgs.policyObjectId,
-    parsedArgs.threshold,
+    // parsedArgs.threshold,
     services.blockchain.sui
   );
 
@@ -287,7 +287,7 @@ async function runEmbeddingOperation() {
 
   // Step 5: Process messages individually with embeddings
   console.log("🔤 Step 5: Processing messages individually with embeddings...");
-  const result = await processMessagesByMessage(decryptedData.messages, services, embeddingArgs);
+  const result = await processMessagesByMessage(decryptedData, services, embeddingArgs);
   
   if (result.status === "failed") {
     console.error("❌ Embedding operation failed!");
