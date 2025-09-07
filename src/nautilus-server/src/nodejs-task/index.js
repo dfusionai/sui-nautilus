@@ -281,8 +281,8 @@ async function runEmbeddingOperation() {
 
   const embeddingArgs = {
     ...parsedArgs,
-    refinedFileBlobId: parsedArgs.walrusBlobId, // Pass from main process
-    refinedFileOnChainId: parsedArgs.onChainFileObjId // Pass from main process
+    original_blob_id: parsedArgs.walrusBlobId, // Pass from main process
+    on_chain_file_obj_id: parsedArgs.onChainFileObjId // Pass from main process
   };
 
   // Step 5: Process messages individually with embeddings
@@ -447,6 +447,7 @@ async function processMessagesByMessage(rawData, services, args) {
             from_id: message.fromId?.userId || null,
             // Reference to the original file
             original_blob_id: args.originalBlobId, // Pass from main process
+            on_chain_file_obj_id: args.onChainFileObjId,
             policy_object_id: args.policyObjectId,
             embedding_dimensions: embeddingResult.embedding.length
           }
@@ -636,7 +637,7 @@ async function runRetrieveByBlobIdsOperation() {
                 status: 'success',
                 message: message,
                 encrypted_object_id: encryptedObject.id,
-                attestation_obj_id: attestationObjId
+                // attestation_obj_id: attestationObjId
               });
             });
             console.log(`✅ Retrieved all ${flatMessages.length} messages from ${walrusBlobId}`);
@@ -662,7 +663,7 @@ async function runRetrieveByBlobIdsOperation() {
                 status: 'success',
                 message: flatMessages[messageIndex],
                 encrypted_object_id: encryptedObject.id,
-                attestation_obj_id: attestationObjId
+                // attestation_obj_id: attestationObjId
               });
               console.log(`✅ Retrieved message at index ${messageIndex} from ${walrusBlobId}`);
             } else {
