@@ -41,59 +41,94 @@ class SealOperations {
     // threshold,
     suiOperations
   ) {
+    let address, sessionKey, message, signature, txBytes, decryptedBytes, jsonString;
     try {
-      console.log(`🔓 Decrypting file: ${fileObjectId}`);
-      const address = suiOperations.getKeypairAddress();
+      // Step 1: Get the address
+      try {
+        address = suiOperations.getKeypairAddress();
+        console.log(`[address] 🎯 Got keypair address`);
+      } catch (err) {
+        console.error(`[address] ❌ Failed to get keypair address: ${err.message}`);
+        throw new Error(`[address] ${err.message}`);
+      }
 
-      const sessionKey = await SessionKey.create({
-        address,
-        packageId: this.movePackageId,
-        ttlMin: 10,
-        suiClient: this.suiClient,
-      });
+      // Step 2: Create session key
+      try {
+        sessionKey = await SessionKey.create({
+          address,
+          packageId: this.movePackageId,
+          ttlMin: 10,
+          suiClient: this.suiClient,
+        });
+        console.log(`[sessionKey.create] 🎯 SessionKey created`);
+      } catch (err) {
+        console.error(`[sessionKey.create] ❌ Failed: ${err.message}`);
+        throw new Error(`[sessionKey.create] ${err.message}`);
+      }
 
-      const message = sessionKey.getPersonalMessage();
-      console.log(`🔑 Personal message: ${message}`);
-      
-      const signature = await suiOperations.signPersonalMessage(message);
-      console.log(`✍️  Signature generated`);
-      
-      await sessionKey.setPersonalMessageSignature(signature.signature);
+      // Step 3: Get message from sessionKey
+      try {
+        message = sessionKey.getPersonalMessage();
+        console.log(`[sessionKey.getPersonalMessage] 🎯 Got personal message`);
+      } catch (err) {
+        console.error(`[sessionKey.getPersonalMessage] ❌ Failed: ${err.message}`);
+        throw new Error(`[getPersonalMessage] ${err.message}`);
+      }
 
-      const txBytes = await suiOperations.sealApprove(
-        fileObjectId,
-        // onChainFileObjId,
-        policyObjectId,
-        // attestationObjId,
-        // address
-      );
+      // Step 4: Sign the message
+      try {
+        signature = await suiOperations.signPersonalMessage(message);
+        console.log(`[signPersonalMessage] 🎯 Signature generated`);
+        await sessionKey.setPersonalMessageSignature(signature.signature);
+        console.log(`[setPersonalMessageSignature] 🎯 Personal message signature set`);
+      } catch (err) {
+        console.error(`[signPersonalMessage/setSignature] ❌ Failed: ${err.message}`);
+        throw new Error(`[signPersonalMessage/setSignature] ${err.message}`);
+      }
 
-      // console.log(`🔐 Fetching decryption keys...`);
-      // await this.sealClient.fetchKeys({
-      //   ids: [fileObjectId],
-      //   txBytes,
-      //   sessionKey,
-      //   // threshold: Number(threshold) || 1,
-      //   threshold: 1,
-      // });
+      // Step 5: Approve the seal
+      try {
+        txBytes = await suiOperations.sealApprove(
+          fileObjectId,
+          // onChainFileObjId,
+          policyObjectId,
+          // attestationObjId,
+          // address
+        );
+        console.log(`[sealApprove] 🎯 Seal approval received`);
+      } catch (err) {
+        console.error(`[sealApprove] ❌ Failed: ${err.message}`);
+        throw new Error(`[sealApprove] ${err.message}`);
+      }
 
-      console.log(`🔓 Decrypting file data...`);
-      const decryptedBytes = await this.sealClient.decrypt({
-        data: new Uint8Array(encryptedFile),
-        sessionKey,
-        txBytes,
-      });
+      // Step 6: Decrypt the file
+      try {
+        console.log(`[decrypt] 🔓 Decrypting file data...`);
+        decryptedBytes = await this.sealClient.decrypt({
+          data: new Uint8Array(encryptedFile),
+          sessionKey,
+          txBytes,
+        });
+        console.log(`[decrypt] 🎯 File decrypted`);
+      } catch (err) {
+        console.error(`[decrypt] ❌ File decryption failed: ${err.message}`);
+        throw new Error(`[decrypt] ${err.message}`);
+      }
 
-      const decoder = new TextDecoder("utf-8");
-      const jsonString = decoder.decode(decryptedBytes);
-      
-      console.log(`✅ File decrypted successfully`);
-      return JSON.parse(jsonString);
+      // Step 7: Decode and parse JSON
+      try {
+        const decoder = new TextDecoder("utf-8");
+        jsonString = decoder.decode(decryptedBytes);
+        console.log(`[decode/parse] 🎯 File decoded, parsing JSON...`);
+        return JSON.parse(jsonString);
+      } catch (err) {
+        console.error(`[decode/parse] ❌ JSON decode/parse failed: ${err.message}`);
+        throw new Error(`[decode/parse] ${err.message}`);
+      }
     } catch (err) {
-      console.error(`❌ Failed to decrypt file: ${err.message}`);
-      throw new Error(
-        `decryptFile failed: ${JSON.stringify(err)} >>>>>> address: ${address} sessionKey: ${sessionKey} message: ${message} signature: ${signature} txBytes: ${txBytes} decryptedBytes: ${decryptedBytes}`
-      );
+      // This will catch errors re-thrown from any inner step
+      console.error(`❌ decryptFile failed: ${err.message}`);
+      throw new Error(`decryptFile failed: ${err.message}`);
     }
   }
 
