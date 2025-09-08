@@ -36,7 +36,7 @@ class QdrantService extends BaseVectorDb {
       
       return true;
     } catch (error) {
-      console.error(`❌ Failed to connect to Qdrant: ${error.message}`);
+      console.error(`❌ Failed to connect to Qdrant: ${error.message}. url:${this.url}, port:${this.port}, apiKey:${this.apiKey}`);
       this.connected = false;
       throw error;
     }
