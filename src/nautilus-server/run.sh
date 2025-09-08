@@ -26,11 +26,18 @@ echo "127.0.0.64   aggregator.walrus-mainnet.walrus.space" >> /etc/hosts
 echo "127.0.0.65   walrus-aggregator.rubynodes.io" >> /etc/hosts
 echo "127.0.0.66   upload-relay.mainnet.walrus.space" >> /etc/hosts
 echo "127.0.0.67   fullnode.mainnet.sui.io" >> /etc/hosts
-echo "127.0.0.68   starter-eu-central-1.api.rubynodes.io" >> /etc/hosts
-echo "127.0.0.69   ollama-embedding.happyfield-d4613d37.eastus.azurecontainerapps.io" >> /etc/hosts
-echo "127.0.0.70   qdrant-vector-db.happyfield-d4613d37.eastus.azurecontainerapps.io" >> /etc/hosts
-echo "127.0.0.71   relay.vana.genesis.dfusion.ai" >> /etc/hosts
-echo "127.0.0.72   sui-private-social-lens-ai-agent.happyfield-d4613d37.eastus.azurecontainerapps.io" >> /etc/hosts
+echo "127.0.0.68   starter-us-east-1.api.rubynodes.io" >> /etc/hosts
+echo "127.0.0.69   starter-eu-central-1.api.rubynodes.io" >> /etc/hosts
+echo "127.0.0.70   starter-ap-southeast-1.api.rubynodes.io" >> /etc/hosts
+echo "127.0.0.71   free-eu-central-1.api.rubynodes.io" >> /etc/hosts
+echo "127.0.0.72   builder-us-east-1.api.rubynodes.io" >> /etc/hosts
+echo "127.0.0.73   builder-eu-central-1.api.rubynodes.io" >> /etc/hosts
+echo "127.0.0.74   builder-ap-southeast-1.api.rubynodes.io" >> /etc/hosts
+echo "127.0.0.75   ollama-embedding.happyfield-d4613d37.eastus.azurecontainerapps.io" >> /etc/hosts
+echo "127.0.0.76   qdrant-vector-db.happyfield-d4613d37.eastus.azurecontainerapps.io" >> /etc/hosts
+echo "127.0.0.77   relay.vana.genesis.dfusion.ai" >> /etc/hosts
+echo "127.0.0.78   sui-private-social-lens-ai-agent.happyfield-d4613d37.eastus.azurecontainerapps.io" >> /etc/hosts
+
 
 
 
@@ -68,6 +75,13 @@ python3 /traffic_forwarder.py 127.0.0.69 443 3 8106 &
 python3 /traffic_forwarder.py 127.0.0.70 443 3 8107 &
 python3 /traffic_forwarder.py 127.0.0.71 443 3 8108 &
 python3 /traffic_forwarder.py 127.0.0.72 443 3 8109 &
+python3 /traffic_forwarder.py 127.0.0.73 443 3 8110 &
+python3 /traffic_forwarder.py 127.0.0.74 443 3 8111 &
+python3 /traffic_forwarder.py 127.0.0.75 443 3 8112 &
+python3 /traffic_forwarder.py 127.0.0.76 443 3 8113 &
+python3 /traffic_forwarder.py 127.0.0.77 443 3 8114 &
+python3 /traffic_forwarder.py 127.0.0.78 443 3 8115 &
+
 
 
 
