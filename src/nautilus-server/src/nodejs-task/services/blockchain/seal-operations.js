@@ -101,20 +101,20 @@ class SealOperations {
         throw new Error(`[sealApprove] ${err.message}`);
       }
 
-      // Step 6: Fetch decryption keys
-      try {
-        console.log(`[fetchKeys] 🔐 Fetching decryption keys...`);
-        await this.sealClient.fetchKeys({
-          ids: [fileObjectId],
-          txBytes,
-          sessionKey,
-          threshold: 1, // Or use: Number(threshold) || 1 if a threshold variable is passed
-        });
-        console.log(`[fetchKeys] 🎯 Decryption keys fetched successfully`);
-      } catch (err) {
-        console.error(`[fetchKeys] ❌ Failed to fetch decryption keys: ${err.message}`);
-        throw new Error(`[fetchKeys] ${err.message}`);
-      }
+      // // Step 6: Fetch decryption keys
+      // try {
+      //   console.log(`[fetchKeys] 🔐 Fetching decryption keys...`);
+      //   await this.sealClient.fetchKeys({
+      //     ids: [fileObjectId],
+      //     txBytes,
+      //     sessionKey,
+      //     threshold: 1, // Or use: Number(threshold) || 1 if a threshold variable is passed
+      //   });
+      //   console.log(`[fetchKeys] 🎯 Decryption keys fetched successfully`);
+      // } catch (err) {
+      //   console.error(`[fetchKeys] ❌ Failed to fetch decryption keys: ${err.message}`);
+      //   throw new Error(`[fetchKeys] ${err.message}`);
+      // }
       
       // Step 6: Decrypt the file
       try {
