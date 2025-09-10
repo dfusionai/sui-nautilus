@@ -16,20 +16,22 @@ class SealOperations {
       throw new Error('MOVE_PACKAGE_ID environment variable is required');
     }
 
-    const keyServers = ['0xda2f2fe7b82a6b734aedfe2d278f83a1db21d21a907dd8e6e19ce5e906b42afe'];
+    const rubyNodesApiKey = process.env.RUBY_NODES_API_KEY;
+    if (rubyNodesApiKey) {
+      throw new Error('RUBY_NODES_API_KEY environment variable is required');
+    }
+
+    const keyServers = ['0x1e315bb053724f57271b06a33c66bc7bc4acfcf2c4e4dc9b9b3fae8c13483cad'];
     this.sealClient = new SealClient({
       suiClient: this.suiClient,
       serverConfigs: keyServers.map((id) => ({
         objectId: id,
         weight: 1,
+        apiKey: rubyNodesApiKey,
+        apiKeyName: 'x-api-key'
       })),
       verifyKeyServers: false,
     });
-    // this.sealClient = new SealClient({
-    //   suiClient: this.suiClient,
-    //   serverObjectIds: keyServers.map((id) => [id, 1]),
-    //   verifyKeyServers: false,
-    // });
   }
 
   async decryptFile(

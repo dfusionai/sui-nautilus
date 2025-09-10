@@ -83,9 +83,9 @@ validate_env() {
     
     # Required variables for Node.js task
     required_vars=(
-        
         "MOVE_PACKAGE_ID" 
         "SUI_SECRET_KEY"
+        "RUBY_NODES_API_KEY"
         "WALRUS_AGGREGATOR_URL"
         "WALRUS_PUBLISHER_URL"
         "WALRUS_EPOCHS"
@@ -131,8 +131,9 @@ test_env_locally() {
     
     echo -e "${BLUE}📋 Loaded variables:${NC}"
 
-    echo "  MOVE_PACKAGE_ID: ${MOVE_PACKAGE_ID:0:20}***"
-    echo "  SUI_SECRET_KEY: ${SUI_SECRET_KEY:0:15}***"
+    echo "  MOVE_PACKAGE_ID: ${MOVE_PACKAGE_ID:0:10}***"
+    echo "  SUI_SECRET_KEY: ${SUI_SECRET_KEY:0:10}***"
+    echo "  RUBY_NODES_API_KEY: ${RUBY_NODES_API_KEY:0:5}***"
     echo "  WALRUS_AGGREGATOR_URL: $WALRUS_AGGREGATOR_URL"
     echo "  WALRUS_PUBLISHER_URL: $WALRUS_PUBLISHER_URL"
     echo "  WALRUS_EPOCHS: $WALRUS_EPOCHS"

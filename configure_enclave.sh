@@ -52,7 +52,8 @@ API_ENV_VAR_NAME="${API_ENV_VAR_NAME:-API_KEY}"
 # Define all environment variables that will be stored in secrets
 ENV_VARIABLES=(
     "MOVE_PACKAGE_ID"
-    "SUI_SECRET_KEY" 
+    "SUI_SECRET_KEY"
+    "RUBY_NODES_API_KEY"
     "WALRUS_AGGREGATOR_URL"
     "WALRUS_PUBLISHER_URL"
     "WALRUS_EPOCHS"
@@ -168,6 +169,10 @@ if [[ "$USE_SECRET" =~ ^[Yy]$ ]]; then
         for env_var in "${ENV_VARIABLES[@]}"; do
             case "$env_var" in
                 "SUI_SECRET_KEY")
+                    read -s -p "Enter $env_var: " value
+                    echo ""
+                    ;;
+                "RUBY_NODES_API_KEY")
                     read -s -p "Enter $env_var: " value
                     echo ""
                     ;;

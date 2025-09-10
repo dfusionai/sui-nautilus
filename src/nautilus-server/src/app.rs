@@ -120,6 +120,7 @@ pub async fn process_data(
     // Core blockchain configuration
     env_vars.insert("MOVE_PACKAGE_ID".to_string(), state.move_package_id().to_string());
     env_vars.insert("SUI_SECRET_KEY".to_string(), state.sui_secret_key().to_string());
+    env_vars.insert("RUBY_NODES_API_KEY".to_string(), state.ruby_nodes_api_key().to_string());
     env_vars.insert("WALRUS_AGGREGATOR_URL".to_string(), state.walrus_aggregator_url().to_string());
     env_vars.insert("WALRUS_PUBLISHER_URL".to_string(), state.walrus_publisher_url().to_string());
     env_vars.insert("WALRUS_EPOCHS".to_string(), state.walrus_epochs_str().to_string());
@@ -200,6 +201,7 @@ pub async fn embedding_ingest(
     // Core blockchain configuration
     env_vars.insert("MOVE_PACKAGE_ID".to_string(), state.move_package_id().to_string());
     env_vars.insert("SUI_SECRET_KEY".to_string(), state.sui_secret_key().to_string());
+    env_vars.insert("RUBY_NODES_API_KEY".to_string(), state.ruby_nodes_api_key().to_string());
     env_vars.insert("WALRUS_AGGREGATOR_URL".to_string(), state.walrus_aggregator_url().to_string());
     env_vars.insert("WALRUS_PUBLISHER_URL".to_string(), state.walrus_publisher_url().to_string());
     env_vars.insert("WALRUS_EPOCHS".to_string(), state.walrus_epochs_str().to_string());
@@ -289,6 +291,7 @@ pub async fn retrieve_messages_by_blob_ids(
     // Core blockchain configuration
     env_vars.insert("MOVE_PACKAGE_ID".to_string(), state.move_package_id().to_string());
     env_vars.insert("SUI_SECRET_KEY".to_string(), state.sui_secret_key().to_string());
+    env_vars.insert("RUBY_NODES_API_KEY".to_string(), state.ruby_nodes_api_key().to_string());
     env_vars.insert("WALRUS_AGGREGATOR_URL".to_string(), state.walrus_aggregator_url().to_string());
     env_vars.insert("WALRUS_PUBLISHER_URL".to_string(), state.walrus_publisher_url().to_string());
     env_vars.insert("WALRUS_EPOCHS".to_string(), state.walrus_epochs_str().to_string());
