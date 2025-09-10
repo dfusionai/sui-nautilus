@@ -21,7 +21,7 @@ class SealOperations {
       throw new Error('RUBY_NODES_API_KEY environment variable is required');
     }
 
-    const keyServers = ['0x1e315bb053724f57271b06a33c66bc7bc4acfcf2c4e4dc9b9b3fae8c13483cad'];
+    const keyServers = ["0x7b757569e0f57c1bebcddcf934ecce4c59f668aec53ab012060e23654649efed"];
     this.sealClient = new SealClient({
       suiClient: this.suiClient,
       serverConfigs: keyServers.map((id) => ({
