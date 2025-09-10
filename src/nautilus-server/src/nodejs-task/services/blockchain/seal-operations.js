@@ -17,7 +17,7 @@ class SealOperations {
     }
 
     const rubyNodesApiKey = process.env.RUBY_NODES_API_KEY;
-    if (rubyNodesApiKey) {
+    if (!rubyNodesApiKey) {
       throw new Error('RUBY_NODES_API_KEY environment variable is required');
     }
 
