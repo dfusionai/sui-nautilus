@@ -16,12 +16,19 @@ class SealOperations {
       throw new Error('MOVE_PACKAGE_ID environment variable is required');
     }
 
+    const rubyNodesApiKey = process.env.RUBY_NODES_API_KEY;
+    if (rubyNodesApiKey) {
+      throw new Error('RUBY_NODES_API_KEY environment variable is required');
+    }
+
     const keyServers = ['0xda2f2fe7b82a6b734aedfe2d278f83a1db21d21a907dd8e6e19ce5e906b42afe'];
     this.sealClient = new SealClient({
       suiClient: this.suiClient,
       serverConfigs: keyServers.map((id) => ({
         objectId: id,
         weight: 1,
+        apiKey: rubyNodesApiKey,
+        apiKeyName: 'x-api-key'
       })),
       verifyKeyServers: false,
     });

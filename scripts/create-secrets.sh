@@ -77,9 +77,9 @@ fi
 
 # Required environment variables
 REQUIRED_VARS=(
-    
     "MOVE_PACKAGE_ID"
     "SUI_SECRET_KEY"
+    "RUBY_NODES_API_KEY"
     "WALRUS_AGGREGATOR_URL"
     "WALRUS_PUBLISHER_URL"
     "WALRUS_EPOCHS"

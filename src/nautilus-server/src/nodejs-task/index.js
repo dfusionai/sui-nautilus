@@ -23,7 +23,8 @@ const ServiceFactory = require("./services/factory/service-factory");
 // Required environment variables that should be passed from Rust app
 const requiredEnvVars = [
   "MOVE_PACKAGE_ID",
-  "SUI_SECRET_KEY", 
+  "SUI_SECRET_KEY",
+  "RUBY_NODES_API_KEY",
   "WALRUS_AGGREGATOR_URL",
   "WALRUS_PUBLISHER_URL",
   "WALRUS_EPOCHS",

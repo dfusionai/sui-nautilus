@@ -147,6 +147,7 @@ env-setup:
 		echo "  - API_KEY: Your API key for authentication"; \
 		echo "  - MOVE_PACKAGE_ID: Your Sui Move package ID"; \
 		echo "  - SUI_SECRET_KEY: Your Sui private key"; \
+		echo "  - RUBY_NODES_API_KEY: Your ruby nodes api key"; \
 		echo "  - WALRUS_*: Walrus configuration URLs"; \
 		echo ""; \
 		echo "🔧 Edit the file: nano .env"; \
@@ -198,8 +199,9 @@ test-env: check-env
 		echo "✅ Environment loaded"; \
 		echo "📋 Testing required variables:"; \
 		echo "  API_KEY: $${API_KEY:0:10}***"; \
-		echo "  MOVE_PACKAGE_ID: $${MOVE_PACKAGE_ID:0:20}***"; \
-		echo "  SUI_SECRET_KEY: $${SUI_SECRET_KEY:0:15}***"; \
+		echo "  MOVE_PACKAGE_ID: $${MOVE_PACKAGE_ID:0:10}***"; \
+		echo "  SUI_SECRET_KEY: $${SUI_SECRET_KEY:0:10}***"; \
+		echo "  RUBY_NODES_API_KEY: $${RUBY_NODES_API_KEY:0:5}***"; \
 		echo "  WALRUS_AGGREGATOR_URL: $$WALRUS_AGGREGATOR_URL"; \
 		echo "  WALRUS_PUBLISHER_URL: $$WALRUS_PUBLISHER_URL"; \
 		echo "  WALRUS_EPOCHS: $$WALRUS_EPOCHS"; \

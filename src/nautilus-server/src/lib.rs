@@ -21,6 +21,9 @@ pub struct AppState {
     pub move_package_id: String,
     pub sui_secret_key: String,
     
+    /// Ruby nodes configuration
+    pub ruby_nodes_api_key: String,
+    
     /// Walrus distributed storage configuration
     pub walrus_aggregator_url: String,
     pub walrus_publisher_url: String,
@@ -49,6 +52,11 @@ impl AppState {
     /// Get Sui secret key
     pub fn sui_secret_key(&self) -> &str {
         &self.sui_secret_key
+    }
+    
+    /// Get ruby nodes api key
+    pub fn ruby_nodes_api_key(&self) -> &str {
+        &self.ruby_nodes_api_key
     }
 
     /// Get Walrus aggregator URL
@@ -124,6 +132,9 @@ impl AppState {
         if self.sui_secret_key.is_empty() {
             return Err("SUI_SECRET_KEY is empty".to_string());
         }
+        if self.ruby_nodes_api_key.is_empty() {
+            return Err("RUBY_NODES_API_KEY is empty".to_string());
+        }
         if self.walrus_aggregator_url.is_empty() {
             return Err("WALRUS_AGGREGATOR_URL is empty".to_string());
         }
@@ -194,6 +205,7 @@ mod tests {
             eph_kp: Ed25519KeyPair::generate(&mut rand::thread_rng()),
             move_package_id: "0x1234567890abcdef".to_string(),
             sui_secret_key: "suiprivkey1qtest".to_string(),
+            ruby_nodes_api_key: "ABC123".to_string(),
             walrus_aggregator_url: "https://aggregator.walrus-testnet.walrus.space".to_string(),
             walrus_publisher_url: "https://publisher.walrus-testnet.walrus.space".to_string(),
             walrus_epochs: "5".to_string(),
@@ -203,6 +215,7 @@ mod tests {
         let mut env_vars = HashMap::new();
         env_vars.insert("MOVE_PACKAGE_ID".to_string(), state.move_package_id().to_string());
         env_vars.insert("SUI_SECRET_KEY".to_string(), state.sui_secret_key().to_string());
+        env_vars.insert("RUBY_NODES_API_KEY".to_string(), state.ruby_nodes_api_key().to_string());
         env_vars.insert("WALRUS_AGGREGATOR_URL".to_string(), state.walrus_aggregator_url().to_string());
         env_vars.insert("WALRUS_PUBLISHER_URL".to_string(), state.walrus_publisher_url().to_string());
         env_vars.insert("WALRUS_EPOCHS".to_string(), state.walrus_epochs_str().to_string());
@@ -210,6 +223,7 @@ mod tests {
         // Verify that env vars from AppState are correctly mapped
         assert_eq!(env_vars.get("MOVE_PACKAGE_ID").unwrap(), "0x1234567890abcdef");
         assert_eq!(env_vars.get("SUI_SECRET_KEY").unwrap(), "suiprivkey1qtest");
+        assert_eq!(env_vars.get("RUBY_NODES_API_KEY").unwrap(), "ABC123");
         assert_eq!(env_vars.get("WALRUS_AGGREGATOR_URL").unwrap(), "https://aggregator.walrus-testnet.walrus.space");
         assert_eq!(env_vars.get("WALRUS_PUBLISHER_URL").unwrap(), "https://publisher.walrus-testnet.walrus.space");
         assert_eq!(env_vars.get("WALRUS_EPOCHS").unwrap(), "5");

@@ -15,13 +15,13 @@ endpoints:
 
   # Seal key servers
   # - seal-testnet.api.rubynodes.io
-  - starter-us-east-1.api.rubynodes.io
-  - starter-eu-central-1.api.rubynodes.io
-  - starter-ap-southeast-1.api.rubynodes.io
-  - free-eu-central-1.api.rubynodes.io
-  - builder-us-east-1.api.rubynodes.io
+  # - starter-us-east-1.api.rubynodes.io
+  # - starter-eu-central-1.api.rubynodes.io
+  # - starter-ap-southeast-1.api.rubynodes.io
+  # - free-eu-central-1.api.rubynodes.io
+  # - builder-us-east-1.api.rubynodes.io
   - builder-eu-central-1.api.rubynodes.io
-  - builder-ap-southeast-1.api.rubynodes.io
+  # - builder-ap-southeast-1.api.rubynodes.io
 
   # Your external AI services (replace with your actual domains)
   # - your-ollama-service.yourdomain.com     # Embedding service

@@ -171,6 +171,7 @@ pub struct ConfigInfo {
     pub walrus_epochs: String,
 
     pub sui_secret_key_configured: bool,
+    pub ruby_nodes_api_key_configured: bool,
 }
 
 /// Endpoint that health checks the enclave connectivity to all
@@ -263,6 +264,7 @@ pub async fn health_check(
             walrus_publisher_url: state.walrus_publisher_url().to_string(),
             walrus_epochs: state.walrus_epochs_str().to_string(),
             sui_secret_key_configured: !state.sui_secret_key().is_empty(),
+            ruby_nodes_api_key_configured: !state.ruby_nodes_api_key().is_empty(),
         },
     };
 
@@ -300,6 +302,7 @@ pub async fn get_config(
             walrus_publisher_url: state.walrus_publisher_url().to_string(),
             walrus_epochs: state.walrus_epochs_str().to_string(),
             sui_secret_key_configured: !state.sui_secret_key().is_empty(),
+            ruby_nodes_api_key_configured: !state.ruby_nodes_api_key().is_empty(),
         },
         validation_errors,
     };
