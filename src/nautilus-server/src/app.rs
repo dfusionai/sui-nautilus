@@ -146,7 +146,7 @@ pub async fn process_data(
 
     let task_config = TaskConfig {
         task_path,
-        timeout_secs: request.payload.timeout_secs.unwrap_or(120),
+        timeout_secs: request.payload.timeout_secs.unwrap_or(900),
         args,
         env_vars,
     };
@@ -245,7 +245,7 @@ pub async fn embedding_ingest(
 
     let task_config = TaskConfig {
         task_path,
-        timeout_secs: request.payload.timeout_secs.unwrap_or(300), // 5 minutes default for embedding
+        timeout_secs: request.payload.timeout_secs.unwrap_or(360), // 6 minutes default for embedding
         args,
         env_vars,
     };

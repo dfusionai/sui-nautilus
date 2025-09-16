@@ -1,9 +1,9 @@
 class BaseVectorDb {
   constructor(options = {}) {
     this.options = {
-      batchSize: options.batchSize || 100,
+      batchSize: options.batchSize || 500,
       maxRetries: options.maxRetries || 3,
-      timeout: options.timeout || 10000,
+      timeout: options.timeout || (1000 * 60 * 3),
       ...options
     };
     this.connected = false;

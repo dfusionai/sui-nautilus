@@ -2,18 +2,18 @@ const config = {
   embedding: {
     providers: {
       ollama: {
-        defaultBatchSize: 10,
+        defaultBatchSize: 64,
         maxRetries: 3,
-        timeout: 30000
+        timeout: 1000 * 60 * 6
       }
     }
   },
   vectorDb: {
     providers: {
       qdrant: {
-        defaultBatchSize: 100,
+        defaultBatchSize: 500,
         maxRetries: 3,
-        timeout: 10000
+        timeout: 1000 * 60 * 3
       }
     }
   },
@@ -30,16 +30,16 @@ const config = {
       sui: {
         network: "mainnet",
         maxRetries: 3,
-        timeout: 30000
+        timeout: 1000 * 60 * 2
       },
       walrus: {
         maxRetries: 3,
-        timeout: 30000
+        timeout: 1000 * 60 * 2
       },
       seal: {
         threshold: 1,
         maxRetries: 3,
-        timeout: 30000
+        timeout: 1000 * 60 * 2
       }
     }
   }
