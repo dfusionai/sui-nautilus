@@ -68,30 +68,31 @@ class OllamaEmbedding extends BaseEmbedding {
     return super.embedBatch(validMessages, batchSize);
   }
 
-  async _processBatch(batch) {
-    const results = [];
-    
-    for (const message of batch) {
-      try {
-        const embedding = await this.embedSingle(message);
-        results.push({
-          message,
-          embedding,
-          success: true,
-          dimensions: embedding.length
-        });
-      } catch (error) {
-        console.error(`❌ Failed to embed message: ${error.message}`);
-        results.push({
-          message,
-          embedding: null,
-          success: false,
-          error: error.message
-        });
+  async _processBatch(batch) { // batch: string[]
+     const response = await axios.post(
+      `${this.apiUrl}/api/embed`,
+      {
+        model: this.model,
+        input: batch
+      },
+      {
+        timeout: this.options.timeout,
+        headers: { 'Content-Type': 'application/json' }
       }
+    );
+
+    // Validate response
+    if (!response.data || !Array.isArray(response.data.embeddings)) {
+      throw new Error(`Invalid response from Ollama: ${JSON.stringify(response.data)}`);
     }
+      
+    return batch.map((text, i) => ({
+      message: text,
+      embedding: response.data.embeddings[i],
+      success: true,
+      dimensions: response.data.embeddings[i]?.length
+    }));
     
-    return results;
   }
 
   async healthCheck() {

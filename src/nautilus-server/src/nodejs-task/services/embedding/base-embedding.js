@@ -1,9 +1,9 @@
 class BaseEmbedding {
   constructor(options = {}) {
     this.options = {
-      batchSize: options.batchSize || 10,
+      batchSize: options.batchSize || 64,
       maxRetries: options.maxRetries || 3,
-      timeout: options.timeout || 30000,
+      timeout: options.timeout || (1000 * 60 * 6),
       ...options
     };
   }
