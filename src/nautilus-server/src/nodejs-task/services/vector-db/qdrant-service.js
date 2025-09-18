@@ -143,7 +143,7 @@ class QdrantService extends BaseVectorDb {
       });
 
       console.log(`🔍 Upserting ${points.length} points to collection '${this.collectionName}'`);
-      console.log(`Inserting points: ${JSON.stringify(points)}`)
+      // console.log(`Inserting points: ${JSON.stringify(points)}`)
 
       await this.client.upsert(this.collectionName, {
         wait: true,

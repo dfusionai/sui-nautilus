@@ -2,9 +2,9 @@ const config = {
   embedding: {
     providers: {
       ollama: {
-        defaultBatchSize: 64,
+        defaultBatchSize: 50,
         maxRetries: 3,
-        timeout: 1000 * 60 * 6
+        timeout: 1000 * 60 * 10
       }
     }
   },
@@ -13,7 +13,7 @@ const config = {
       qdrant: {
         defaultBatchSize: 500,
         maxRetries: 3,
-        timeout: 1000 * 60 * 3
+        timeout: 1000 * 60 * 10
       }
     }
   },

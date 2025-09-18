@@ -209,7 +209,7 @@ async function initializeServices() {
     services = {
       refinement: ServiceFactory.createRefinementService('chat'),
       embedding: ServiceFactory.createEmbeddingService('ollama', {
-        batchSize: parseInt(process.env.EMBEDDING_BATCH_SIZE || '64')
+        batchSize: parseInt(process.env.EMBEDDING_BATCH_SIZE || '50')
       }),
       vectorDb: ServiceFactory.createVectorDbService('qdrant', {
         batchSize: parseInt(process.env.VECTOR_BATCH_SIZE || '500')
@@ -285,7 +285,7 @@ async function runEmbeddingOperation() {
     original_blob_id: parsedArgs.walrusBlobId, // Pass from main process
     on_chain_file_obj_id: parsedArgs.onChainFileObjId, // Pass from main process
     processingConfig: {
-      batchSize: process.env.EMBEDDING_BATCH_SIZE || '64',
+      batchSize: process.env.EMBEDDING_BATCH_SIZE || '50',
       storeVectors: 'true',
       includeEmbeddings: 'false'
     }
@@ -372,118 +372,112 @@ async function processMessagesByMessage(rawData, services, args) {
   );
   console.log(`📝 Found ${validMessages.length} messages with text content`);
 
-  // Process messages in batches for embedding generation and vector storage
+  // Create batches with their starting indices
+  const allBatches = [];
   for (let i = 0; i < validMessages.length; i += batchSize) {
-    const batch = validMessages.slice(i, i + batchSize);
-    const batchNum = Math.floor(i / batchSize) + 1;
-    const totalBatches = Math.ceil(validMessages.length / batchSize);
+    allBatches.push({
+      messages: validMessages.slice(i, i + batchSize),
+      startIndex: i
+    });
+  }
 
-    console.log(`📦 Processing batch ${batchNum}/${totalBatches} (${batch.length} messages)`);
+  const totalBatches = allBatches.length;
+  let processedBatches = 0;
 
-    // Generate embeddings for this batch
-    const embeddingResults = await services.embedding.embedBatch(
-      batch.map(msg => {
-        const datetime = msg.date ? new Date(msg.date * 1000).toISOString() : "";
-        const fromUserId = msg.fromId?.userId || '';
-        const message = msg.message || '';
-        const conversationId = msg.chat_id || '';
-        const ownerUserId = msg.user_id || '';
-        return `Date: ${datetime}, From User Id: ${fromUserId}, Message: ${message}, Conversation Id: ${conversationId}, Owner User Id: ${ownerUserId}`;
-      })
+  try {
+    await parallelProcess(
+      allBatches,
+      async (batchData, batchNum) => {
+        const { messages: batch, startIndex } = batchData;
+        
+        console.log(`📦 Processing batch ${batchNum + 1}/${totalBatches} (${batch.length} messages)`);
+
+        // Generate embeddings for this batch
+        const embeddingResults = await services.embedding.embedBatch(
+          batch.map(msg => {
+            const datetime = msg.date ? new Date(msg.date * 1000).toISOString() : "";
+            const fromUserId = msg.fromId?.userId || '';
+            const message = msg.message || '';
+            const conversationId = msg.chat_id || '';
+            const ownerUserId = msg.user_id || '';
+            return `Date: ${datetime}, From User Id: ${fromUserId}, Message: ${message}, Conversation Id: ${conversationId}, Owner User Id: ${ownerUserId}`;
+          })
+        );
+
+        // Check for embedding failures
+        for (let j = 0; j < embeddingResults.length; j++) {
+          const embeddingResult = embeddingResults[j];
+          const message = batch[j];
+          if (!embeddingResult.success) {
+            const error = `Failed to generate embedding for message ${message.id}: ${embeddingResult.error || 'Unknown error'}`;
+            console.error(`💥 EMBEDDING FAILURE: ${error}`);
+            throw new Error(error);
+          }
+        }
+
+        // All embeddings successful - collect vectors for batch
+        const vectorBatch = [];
+        for (let j = 0; j < batch.length; j++) {
+          const message = batch[j];
+          const embeddingResult = embeddingResults[j];
+
+          const currentMessageIndex = startIndex + j;
+          const rawPosition = messageIndexMap.get(currentMessageIndex);
+
+          const vectorData = {
+            id: message.id,
+            vector: embeddingResult.embedding,
+            metadata: {
+              message_id: message.id,
+              message_index: currentMessageIndex, // Flat index
+              chat_index: rawPosition?.chatIndex,
+              content_index: rawPosition?.contentIndex,
+              user_id: message.user_id,
+              chat_id: message.chat_id,
+              from_id: message.fromId?.userId || null,
+              original_blob_id: args.originalBlobId,
+              on_chain_file_obj_id: args.onChainFileObjId,
+              policy_object_id: args.policyObjectId,
+              embedding_dimensions: embeddingResult.embedding.length
+            }
+          };
+          vectorBatch.push(vectorData);
+        }
+
+        // Store the whole batch at once in vector DB
+        const storeResults = await services.vectorDb.storeBatch(vectorBatch);
+        for (let r = 0; r < storeResults.length; r++) {
+          if (!storeResults[r] || !storeResults[r].success) {
+            const failedMessage = batch[r].id;
+            const error = `Failed to store vector for message ${failedMessage}: ${storeResults[r]?.error || 'Unknown error'}`;
+            console.error(`💥 VECTOR STORAGE FAILURE: ${error}`);
+            throw new Error(error);
+          }
+        }
+
+        // Update stats (note: this creates a potential race condition, but for counting it's usually acceptable)
+        stats.successfulEmbeddings += batch.length;
+        stats.successfulVectorStorages += batch.length;
+        
+        processedBatches++;
+        console.log(`✅ Batch ${batchNum + 1}/${totalBatches} completed (${processedBatches}/${totalBatches} total)`);
+
+        return { success: true, processedCount: batch.length };
+      },
+      4 // Concurrency level - adjust based on your system capabilities
     );
 
-    // Check if any embeddings failed - FAIL FAST approach
-    for (let j = 0; j < embeddingResults.length; j++) {
-      const embeddingResult = embeddingResults[j];
-      const message = batch[j];
-      if (!embeddingResult.success) {
-        const error = `Failed to generate embedding for message ${message.id}: ${embeddingResult.error || 'Unknown error'}`;
-        console.error(`💥 EMBEDDING FAILURE - STOPPING PROCESSING: ${error}`);
-        return {
-          status: "failed",
-          operation: "embedding",
-          processedCount: 0,
-          failureReason: "embedding_generation_failed",
-          failedMessage: message.id,
-          error: error,
-          totalMessages: validMessages.length,
-          processedSoFar: stats.successfulEmbeddings
-        };
-      }
-    }
-
-    // All embeddings successful - collect vectors for batch
-    const vectorBatch = [];
-    for (let j = 0; j < batch.length; j++) {
-      const message = batch[j];
-      const embeddingResult = embeddingResults[j];
-      stats.successfulEmbeddings++;
-
-      const currentMessageIndex = i + j;
-      const rawPosition = messageIndexMap.get(currentMessageIndex);
-
-      const vectorData = {
-        id: message.id,
-        vector: embeddingResult.embedding,
-        metadata: {
-          message_id: message.id,
-          message_index: currentMessageIndex, // Flat index
-          chat_index: rawPosition?.chatIndex,
-          content_index: rawPosition?.contentIndex,
-          user_id: message.user_id,
-          chat_id: message.chat_id,
-          from_id: message.fromId?.userId || null,
-          original_blob_id: args.originalBlobId,
-          on_chain_file_obj_id: args.onChainFileObjId,
-          policy_object_id: args.policyObjectId,
-          embedding_dimensions: embeddingResult.embedding.length
-        }
-      };
-      vectorBatch.push(vectorData);
-    }
-
-    // Store the whole batch at once in vector DB
-    try {
-      const storeResults = await services.vectorDb.storeBatch(vectorBatch);
-      for (let r = 0; r < storeResults.length; r++) {
-        if (storeResults[r] && storeResults[r].success) {
-          stats.successfulVectorStorages++;
-        } else {
-          stats.failedVectorStorages++;
-          stats.errors.push(storeResults[r]?.error || 'Unknown error');
-          const failedMessage = batch[r].id;
-          const error = `Failed to store vector for message ${failedMessage}: ${storeResults[r]?.error || 'Unknown error'}`;
-          console.error(`💥 VECTOR STORAGE FAILURE - STOPPING PROCESSING: ${error}`);
-          return {
-            status: "failed",
-            operation: "embedding",
-            processedCount: stats.successfulEmbeddings,
-            failureReason: "vector_storage_failed",
-            failedMessage: failedMessage,
-            error: error,
-            totalMessages: validMessages.length,
-            processedSoFar: stats.successfulEmbeddings
-          };
-        }
-      }
-    } catch (error) {
-      const errorMsg = `Error storing batch vectors: ${error.message}`;
-      console.error(`💥 BATCH VECTOR STORAGE FAILURE: ${errorMsg}`);
-      return {
-        status: "failed",
-        operation: "embedding",
-        processedCount: stats.successfulEmbeddings,
-        failureReason: "batch_vector_storage_failed",
-        error: errorMsg,
-        totalMessages: validMessages.length,
-        processedSoFar: stats.successfulEmbeddings
-      };
-    }
-
-    // Small delay between batches
-    if (i + batchSize < validMessages.length) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
+  } catch (error) {
+    console.error(`💥 PROCESSING FAILED: ${error.message}`);
+    return {
+      status: "failed",
+      operation: "embedding",
+      processedCount: stats.successfulEmbeddings,
+      failureReason: "parallel_processing_failed",
+      error: error.message,
+      totalMessages: validMessages.length,
+      processedSoFar: stats.successfulEmbeddings
+    };
   }
 
   // If we reach here, all messages were processed successfully
@@ -507,6 +501,25 @@ async function processMessagesByMessage(rawData, services, args) {
   return result;
 }
 
+async function parallelProcess(items, processFn, concurrency = 4) {
+  let index = 0;
+  
+  async function worker() {
+    while (index < items.length) {
+      const currentIndex = index++;
+      const item = items[currentIndex];
+      await processFn(item, currentIndex);
+    }
+  }
+  
+  // Create worker promises
+  const workers = Array(Math.min(concurrency, items.length))
+    .fill()
+    .map(() => worker());
+  
+  // Wait for all workers to complete
+  await Promise.all(workers);
+}
 
 
 async function runRetrieveByBlobIdsOperation() {
@@ -753,7 +766,7 @@ async function runDefaultOperation() {
       ...parsedArgs,
       originalBlobId: parsedArgs.blobId,
       processingConfig: {
-        batchSize: process.env.EMBEDDING_BATCH_SIZE || '64',
+        batchSize: process.env.EMBEDDING_BATCH_SIZE || '50',
         storeVectors: 'true',
         includeEmbeddings: 'false'
       }

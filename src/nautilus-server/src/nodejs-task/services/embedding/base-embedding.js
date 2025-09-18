@@ -1,9 +1,9 @@
 class BaseEmbedding {
   constructor(options = {}) {
     this.options = {
-      batchSize: options.batchSize || 64,
+      batchSize: options.batchSize || 50,
       maxRetries: options.maxRetries || 3,
-      timeout: options.timeout || (1000 * 60 * 6),
+      timeout: options.timeout || (1000 * 60 * 10),
       ...options
     };
   }
@@ -13,6 +13,8 @@ class BaseEmbedding {
   }
 
   async embedBatch(messages, batchSize = null) {
+    const timerLabel = `⌚ embedBatch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    console.time(timerLabel);
     const effectiveBatchSize = batchSize || this.options.batchSize;
     const results = [];
     
@@ -31,6 +33,7 @@ class BaseEmbedding {
     }
     
     console.log(`✅ Completed batch embedding for ${results.length} messages`);
+    console.timeEnd(timerLabel);
     return results;
   }
 
