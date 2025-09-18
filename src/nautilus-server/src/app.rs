@@ -160,9 +160,10 @@ pub async fn process_data(
     // If task failed, return error
     if task_output.exit_code != 0 {
         return Err(EnclaveError::GenericError(format!(
-            "Task failed with exit code {}: {}",
+            "Task failed with exit code {}: stderr={}. stdout={}",
             task_output.exit_code,
-            task_output.stderr
+            task_output.stderr,
+            task_output.stdout
         )));
     }
 
