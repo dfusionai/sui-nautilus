@@ -33,6 +33,10 @@ pub struct AppState {
     pub ollama_api_url: String,
     pub ollama_model: String,
     
+    // Azure open ai embedding configuration
+    pub azure_text_embedding_api_endpoint: String,
+    pub azure_text_embedding_api_key: String,
+    
     /// Qdrant vector database configuration
     pub qdrant_url: String,
     pub qdrant_api_key: Option<String>,
@@ -87,6 +91,14 @@ impl AppState {
     /// Get Ollama model
     pub fn ollama_model(&self) -> &str {
         &self.ollama_model
+    }
+    
+    pub fn azure_text_embedding_api_endpoint(&self) -> &str {
+        &self.azure_text_embedding_api_endpoint
+    }
+    
+    pub fn azure_text_embedding_api_key(&self) -> &str {
+        &self.azure_text_embedding_api_key
     }
 
     /// Get Qdrant URL
@@ -149,6 +161,12 @@ impl AppState {
         }
         if self.ollama_model.is_empty() {
             return Err("OLLAMA_MODEL is empty".to_string());
+        }
+        if self.azure_text_embedding_api_endpoint.is_empty() {
+            return Err("AZURE_TEXT_EMBEDDING_API_ENDPOINT is empty".to_string());
+        }
+        if self.azure_text_embedding_api_key.is_empty() {
+            return Err("AZURE_TEXT_EMBEDDING_API_KEY is empty".to_string());
         }
         if self.qdrant_url.is_empty() {
             return Err("QDRANT_URL is empty".to_string());

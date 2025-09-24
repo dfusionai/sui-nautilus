@@ -73,7 +73,7 @@ class BaseEmbedding {
         lastError = error;
         if (attempt < retries - 1) {
           const delay = Math.pow(2, attempt) * 1000;
-          console.log(`⚠️  Attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
+          console.log(`⚠️ Attempt ${attempt + 1} failed: ${error.message}, retrying in ${delay}ms...`);
           await this._delay(delay);
         }
       }

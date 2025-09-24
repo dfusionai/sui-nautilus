@@ -31,7 +31,7 @@ run: out/nitro.eif
 	sudo nitro-cli \
 		run-enclave \
 		--cpu-count 2 \
-		--memory 1024M \
+		--memory 8192M \
 		--eif-path out/nitro.eif
 
 .PHONY: run-debug

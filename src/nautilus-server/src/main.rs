@@ -28,6 +28,10 @@ async fn main() -> Result<()> {
     let ollama_api_url = std::env::var("OLLAMA_API_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
     let ollama_model = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "nomic-embed-text".to_string());
     
+    // Load Azure open ai embedding service configuration
+    let azure_text_embedding_api_endpoint = std::env::var("AZURE_TEXT_EMBEDDING_API_ENDPOINT").expect("AZURE_TEXT_EMBEDDING_API_ENDPOINT must be set");
+    let azure_text_embedding_api_key = std::env::var("AZURE_TEXT_EMBEDDING_API_KEY").expect("AZURE_TEXT_EMBEDDING_API_KEY must be set");
+    
     // Load Qdrant vector database configuration
     let qdrant_url = std::env::var("QDRANT_URL").unwrap_or_else(|_| "http://localhost:6333".to_string());
     let qdrant_api_key = std::env::var("QDRANT_API_KEY").ok(); // Optional
@@ -45,6 +49,8 @@ async fn main() -> Result<()> {
     info!("  WALRUS_EPOCHS: {}", walrus_epochs);
     info!("  OLLAMA_API_URL: {}", ollama_api_url);
     info!("  OLLAMA_MODEL: {}", ollama_model);
+    info!("  AZURE_TEXT_EMBEDDING_API_ENDPOINT: {}", azure_text_embedding_api_endpoint);
+    info!("  AZURE_TEXT_EMBEDDING_API_KEY: {}", azure_text_embedding_api_key);
     info!("  QDRANT_URL: {}", qdrant_url);
     info!("  QDRANT_COLLECTION_NAME: {}", qdrant_collection_name);
     info!("  EMBEDDING_BATCH_SIZE: {}", embedding_batch_size);
@@ -63,6 +69,8 @@ async fn main() -> Result<()> {
         walrus_epochs,
         ollama_api_url,
         ollama_model,
+        azure_text_embedding_api_endpoint,
+        azure_text_embedding_api_key,
         qdrant_url,
         qdrant_api_key,
         qdrant_collection_name,

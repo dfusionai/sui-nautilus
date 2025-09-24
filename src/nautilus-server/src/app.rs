@@ -129,6 +129,10 @@ pub async fn process_data(
     env_vars.insert("OLLAMA_API_URL".to_string(), state.ollama_api_url().to_string());
     env_vars.insert("OLLAMA_MODEL".to_string(), state.ollama_model().to_string());
 
+    // Azure open ai embedding configuration
+    env_vars.insert("AZURE_TEXT_EMBEDDING_API_ENDPOINT".to_string(), state.azure_text_embedding_api_endpoint().to_string());
+    env_vars.insert("AZURE_TEXT_EMBEDDING_API_KEY".to_string(), state.azure_text_embedding_api_key().to_string());
+
     // Qdrant vector database configuration
     env_vars.insert("QDRANT_URL".to_string(), state.qdrant_url().to_string());
     env_vars.insert("QDRANT_COLLECTION_NAME".to_string(), state.qdrant_collection_name().to_string());
@@ -211,6 +215,10 @@ pub async fn embedding_ingest(
     env_vars.insert("OLLAMA_API_URL".to_string(), state.ollama_api_url().to_string());
     env_vars.insert("OLLAMA_MODEL".to_string(), state.ollama_model().to_string());
 
+    // Azure open ai embedding configuration
+    env_vars.insert("AZURE_TEXT_EMBEDDING_API_ENDPOINT".to_string(), state.azure_text_embedding_api_endpoint().to_string());
+    env_vars.insert("AZURE_TEXT_EMBEDDING_API_KEY".to_string(), state.azure_text_embedding_api_key().to_string());
+    
     // Qdrant vector database configuration
     env_vars.insert("QDRANT_URL".to_string(), state.qdrant_url().to_string());
     env_vars.insert("QDRANT_COLLECTION_NAME".to_string(), state.qdrant_collection_name().to_string());
@@ -301,6 +309,10 @@ pub async fn retrieve_messages_by_blob_ids(
     env_vars.insert("OLLAMA_API_URL".to_string(), state.ollama_api_url().to_string());
     env_vars.insert("OLLAMA_MODEL".to_string(), state.ollama_model().to_string());
 
+    // Azure open ai embedding configuration
+    env_vars.insert("AZURE_TEXT_EMBEDDING_API_ENDPOINT".to_string(), state.azure_text_embedding_api_endpoint().to_string());
+    env_vars.insert("AZURE_TEXT_EMBEDDING_API_KEY".to_string(), state.azure_text_embedding_api_key().to_string());
+    
     // Qdrant vector database configuration (not needed but kept for consistency)
     env_vars.insert("QDRANT_URL".to_string(), state.qdrant_url().to_string());
     env_vars.insert("QDRANT_COLLECTION_NAME".to_string(), state.qdrant_collection_name().to_string());

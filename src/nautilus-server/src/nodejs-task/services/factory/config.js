@@ -5,7 +5,8 @@ const config = {
         defaultBatchSize: 50,
         maxRetries: 3,
         timeout: 1000 * 60 * 10
-      }
+      },
+      azure: {},
     }
   },
   vectorDb: {

@@ -59,6 +59,8 @@ ENV_VARIABLES=(
     "WALRUS_EPOCHS"
     "OLLAMA_API_URL"
     "OLLAMA_MODEL"
+    "AZURE_TEXT_EMBEDDING_API_ENDPOINT"
+    "AZURE_TEXT_EMBEDDING_API_KEY"
     "QDRANT_URL"
     "QDRANT_API_KEY"
     "QDRANT_COLLECTION_NAME"
@@ -182,6 +184,12 @@ if [[ "$USE_SECRET" =~ ^[Yy]$ ]]; then
                     ;;
                 "OLLAMA_MODEL")
                     echo "Examples: nomic-embed-text, all-minilm, sentence-transformers"
+                    read -p "Enter $env_var: " value
+                    ;;
+                "AZURE_TEXT_EMBEDDING_API_ENDPOINT")
+                    read -p "Enter $env_var: " value
+                    ;;
+                "AZURE_TEXT_EMBEDDING_API_KEY")
                     read -p "Enter $env_var: " value
                     ;;
                 "QDRANT_URL")
