@@ -34,7 +34,8 @@ const requiredEnvVars = [
   "QDRANT_COLLECTION_NAME",
   "QDRANT_API_KEY",
   "AZURE_TEXT_EMBEDDING_API_ENDPOINT",
-  "AZURE_TEXT_EMBEDDING_API_KEY"
+  "AZURE_TEXT_EMBEDDING_API_KEY",
+  "TELEGRAM_SOCIAL_TRUTH_BOT_ID"
 ];
 
 console.log("🔧 Validating environment variables passed from Rust app...");
@@ -318,10 +319,11 @@ async function processMessagesByMessage(rawData, services, args) {
   const messages = [];
   const messageIndexMap = new Map(); // Map to track message position in raw structure
   // ☕ Exclude chats with @social_truth_bot
+  const socialTruthBotId = Number(process.env.TELEGRAM_SOCIAL_TRUTH_BOT_ID);
   if (rawData.chats && Array.isArray(rawData.chats)) {
     for (let chatIndex = 0; chatIndex < rawData.chats.length; chatIndex++) {
       const chat = rawData.chats[chatIndex];
-      if (chat.contents && Array.isArray(chat.contents) && chat.chat_id !== 7862527963) {
+      if (chat.contents && Array.isArray(chat.contents) && chat.chat_id !== socialTruthBotId) {
         for (let contentIndex = 0; contentIndex < chat.contents.length; contentIndex++) {
           const msg = chat.contents[contentIndex];
           const flatIndex = messages.length;
@@ -330,6 +332,7 @@ async function processMessagesByMessage(rawData, services, args) {
             chat_id: chat.chat_id,
             user_id: rawData.user
           });
+
           messageIndexMap.set(flatIndex, {
             chatIndex: chatIndex,
             contentIndex: contentIndex

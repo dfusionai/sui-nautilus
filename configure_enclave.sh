@@ -66,6 +66,7 @@ ENV_VARIABLES=(
     "QDRANT_COLLECTION_NAME"
     "EMBEDDING_BATCH_SIZE"
     "VECTOR_BATCH_SIZE"
+    "TELEGRAM_SOCIAL_TRUTH_BOT_ID"
 )
 
 ############################
@@ -211,6 +212,10 @@ if [[ "$USE_SECRET" =~ ^[Yy]$ ]]; then
                     ;;
                 "VECTOR_BATCH_SIZE")
                     echo "Batch size for vector operations (default: 100)"
+                    read -p "Enter $env_var: " value
+                    ;;
+                "TELEGRAM_SOCIAL_TRUTH_BOT_ID")
+                    echo "Telegram Auth Bot ID"
                     read -p "Enter $env_var: " value
                     ;;
                 *)

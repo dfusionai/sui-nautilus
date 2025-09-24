@@ -45,6 +45,9 @@ pub struct AppState {
     /// Task processing configuration
     pub embedding_batch_size: String,
     pub vector_batch_size: String,
+    
+    // Social truth telegram bot configuration
+    pub telegram_social_truth_bot_id: String,
 }
 
 impl AppState {
@@ -136,6 +139,10 @@ impl AppState {
         self.vector_batch_size.parse()
     }
 
+    pub fn telegram_social_truth_bot_id(&self) -> &str {
+        &self.telegram_social_truth_bot_id
+    }
+
     /// Check if all required environment variables are properly configured
     pub fn validate_config(&self) -> Result<(), String> {
         if self.move_package_id.is_empty() {
@@ -179,6 +186,9 @@ impl AppState {
         }
         if self.vector_batch_size.is_empty() {
             return Err("VECTOR_BATCH_SIZE is empty".to_string());
+        }
+        if self.telegram_social_truth_bot_id.is_empty() {
+            return Err("TELEGRAM_SOCIAL_TRUTH_BOT_ID is empty".to_string());
         }
         
         // Validate that numeric values are valid
