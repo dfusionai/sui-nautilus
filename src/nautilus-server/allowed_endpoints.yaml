@@ -35,4 +35,5 @@ endpoints:
   - qdrant-vector-db.happyfield-d4613d37.eastus.azurecontainerapps.io
   - relay.vana.genesis.dfusion.ai
   - sui-private-social-lens-ai-agent.happyfield-d4613d37.eastus.azurecontainerapps.io
+  - social-truth-ai.openai.azure.com
   

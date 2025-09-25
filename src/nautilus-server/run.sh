@@ -31,6 +31,8 @@ echo "127.0.0.69   ollama-embedding.happyfield-d4613d37.eastus.azurecontainerapp
 echo "127.0.0.70   qdrant-vector-db.happyfield-d4613d37.eastus.azurecontainerapps.io" >> /etc/hosts
 echo "127.0.0.71   relay.vana.genesis.dfusion.ai" >> /etc/hosts
 echo "127.0.0.72   sui-private-social-lens-ai-agent.happyfield-d4613d37.eastus.azurecontainerapps.io" >> /etc/hosts
+echo "127.0.0.73   social-truth-ai.openai.azure.com" >> /etc/hosts
+
 
 
 
@@ -70,6 +72,8 @@ python3 /traffic_forwarder.py 127.0.0.69 443 3 8106 &
 python3 /traffic_forwarder.py 127.0.0.70 443 3 8107 &
 python3 /traffic_forwarder.py 127.0.0.71 443 3 8108 &
 python3 /traffic_forwarder.py 127.0.0.72 443 3 8109 &
+python3 /traffic_forwarder.py 127.0.0.73 443 3 8110 &
+
 
 
 
