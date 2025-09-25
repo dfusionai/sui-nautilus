@@ -59,11 +59,14 @@ ENV_VARIABLES=(
     "WALRUS_EPOCHS"
     "OLLAMA_API_URL"
     "OLLAMA_MODEL"
+    "AZURE_TEXT_EMBEDDING_API_ENDPOINT"
+    "AZURE_TEXT_EMBEDDING_API_KEY"
     "QDRANT_URL"
     "QDRANT_API_KEY"
     "QDRANT_COLLECTION_NAME"
     "EMBEDDING_BATCH_SIZE"
     "VECTOR_BATCH_SIZE"
+    "TELEGRAM_SOCIAL_TRUTH_BOT_ID"
 )
 
 ############################
@@ -184,6 +187,12 @@ if [[ "$USE_SECRET" =~ ^[Yy]$ ]]; then
                     echo "Examples: nomic-embed-text, all-minilm, sentence-transformers"
                     read -p "Enter $env_var: " value
                     ;;
+                "AZURE_TEXT_EMBEDDING_API_ENDPOINT")
+                    read -p "Enter $env_var: " value
+                    ;;
+                "AZURE_TEXT_EMBEDDING_API_KEY")
+                    read -p "Enter $env_var: " value
+                    ;;
                 "QDRANT_URL")
                     echo "Examples: http://localhost:6333 or https://your-qdrant-service.yourdomain.com"
                     read -p "Enter $env_var: " value
@@ -203,6 +212,10 @@ if [[ "$USE_SECRET" =~ ^[Yy]$ ]]; then
                     ;;
                 "VECTOR_BATCH_SIZE")
                     echo "Batch size for vector operations (default: 100)"
+                    read -p "Enter $env_var: " value
+                    ;;
+                "TELEGRAM_SOCIAL_TRUTH_BOT_ID")
+                    echo "Telegram Auth Bot ID"
                     read -p "Enter $env_var: " value
                     ;;
                 *)

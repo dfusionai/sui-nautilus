@@ -28,6 +28,10 @@ async fn main() -> Result<()> {
     let ollama_api_url = std::env::var("OLLAMA_API_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
     let ollama_model = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "nomic-embed-text".to_string());
     
+    // Load Azure open ai embedding service configuration
+    let azure_text_embedding_api_endpoint = std::env::var("AZURE_TEXT_EMBEDDING_API_ENDPOINT").expect("AZURE_TEXT_EMBEDDING_API_ENDPOINT must be set");
+    let azure_text_embedding_api_key = std::env::var("AZURE_TEXT_EMBEDDING_API_KEY").expect("AZURE_TEXT_EMBEDDING_API_KEY must be set");
+    
     // Load Qdrant vector database configuration
     let qdrant_url = std::env::var("QDRANT_URL").unwrap_or_else(|_| "http://localhost:6333".to_string());
     let qdrant_api_key = std::env::var("QDRANT_API_KEY").ok(); // Optional
@@ -37,6 +41,9 @@ async fn main() -> Result<()> {
     let embedding_batch_size = std::env::var("EMBEDDING_BATCH_SIZE").unwrap_or_else(|_| "10".to_string());
     let vector_batch_size = std::env::var("VECTOR_BATCH_SIZE").unwrap_or_else(|_| "100".to_string());
 
+    // Load Telegram Social Truth Bot configuration
+    let telegram_social_truth_bot_id = std::env::var("TELEGRAM_SOCIAL_TRUTH_BOT_ID").expect("TELEGRAM_SOCIAL_TRUTH_BOT_ID must be set");
+
     // Log loaded configuration (without sensitive values)
     info!("Loading Nautilus server configuration:");
     info!("  MOVE_PACKAGE_ID: {}", move_package_id);
@@ -45,6 +52,8 @@ async fn main() -> Result<()> {
     info!("  WALRUS_EPOCHS: {}", walrus_epochs);
     info!("  OLLAMA_API_URL: {}", ollama_api_url);
     info!("  OLLAMA_MODEL: {}", ollama_model);
+    info!("  AZURE_TEXT_EMBEDDING_API_ENDPOINT: {}", azure_text_embedding_api_endpoint);
+    info!("  AZURE_TEXT_EMBEDDING_API_KEY: {}", azure_text_embedding_api_key);
     info!("  QDRANT_URL: {}", qdrant_url);
     info!("  QDRANT_COLLECTION_NAME: {}", qdrant_collection_name);
     info!("  EMBEDDING_BATCH_SIZE: {}", embedding_batch_size);
@@ -52,6 +61,7 @@ async fn main() -> Result<()> {
     info!("  SUI_SECRET_KEY: ****** (hidden)");
     info!("  RUBY_NODES_API_KEY: ****** (hidden)");
     info!("  QDRANT_API_KEY: {}", if qdrant_api_key.is_some() { "****** (hidden)" } else { "not set" });
+    info!("  TELEGRAM_SOCIAL_TRUTH_BOT_ID: {}", telegram_social_truth_bot_id);
 
     let state = Arc::new(AppState { 
         eph_kp, 
@@ -63,11 +73,14 @@ async fn main() -> Result<()> {
         walrus_epochs,
         ollama_api_url,
         ollama_model,
+        azure_text_embedding_api_endpoint,
+        azure_text_embedding_api_key,
         qdrant_url,
         qdrant_api_key,
         qdrant_collection_name,
         embedding_batch_size,
         vector_batch_size,
+        telegram_social_truth_bot_id,
     });
 
     // Validate configuration before starting server

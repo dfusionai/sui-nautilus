@@ -33,6 +33,10 @@ pub struct AppState {
     pub ollama_api_url: String,
     pub ollama_model: String,
     
+    // Azure open ai embedding configuration
+    pub azure_text_embedding_api_endpoint: String,
+    pub azure_text_embedding_api_key: String,
+    
     /// Qdrant vector database configuration
     pub qdrant_url: String,
     pub qdrant_api_key: Option<String>,
@@ -41,6 +45,9 @@ pub struct AppState {
     /// Task processing configuration
     pub embedding_batch_size: String,
     pub vector_batch_size: String,
+    
+    // Social truth telegram bot configuration
+    pub telegram_social_truth_bot_id: String,
 }
 
 impl AppState {
@@ -88,6 +95,14 @@ impl AppState {
     pub fn ollama_model(&self) -> &str {
         &self.ollama_model
     }
+    
+    pub fn azure_text_embedding_api_endpoint(&self) -> &str {
+        &self.azure_text_embedding_api_endpoint
+    }
+    
+    pub fn azure_text_embedding_api_key(&self) -> &str {
+        &self.azure_text_embedding_api_key
+    }
 
     /// Get Qdrant URL
     pub fn qdrant_url(&self) -> &str {
@@ -124,6 +139,10 @@ impl AppState {
         self.vector_batch_size.parse()
     }
 
+    pub fn telegram_social_truth_bot_id(&self) -> &str {
+        &self.telegram_social_truth_bot_id
+    }
+
     /// Check if all required environment variables are properly configured
     pub fn validate_config(&self) -> Result<(), String> {
         if self.move_package_id.is_empty() {
@@ -150,6 +169,12 @@ impl AppState {
         if self.ollama_model.is_empty() {
             return Err("OLLAMA_MODEL is empty".to_string());
         }
+        if self.azure_text_embedding_api_endpoint.is_empty() {
+            return Err("AZURE_TEXT_EMBEDDING_API_ENDPOINT is empty".to_string());
+        }
+        if self.azure_text_embedding_api_key.is_empty() {
+            return Err("AZURE_TEXT_EMBEDDING_API_KEY is empty".to_string());
+        }
         if self.qdrant_url.is_empty() {
             return Err("QDRANT_URL is empty".to_string());
         }
@@ -161,6 +186,9 @@ impl AppState {
         }
         if self.vector_batch_size.is_empty() {
             return Err("VECTOR_BATCH_SIZE is empty".to_string());
+        }
+        if self.telegram_social_truth_bot_id.is_empty() {
+            return Err("TELEGRAM_SOCIAL_TRUTH_BOT_ID is empty".to_string());
         }
         
         // Validate that numeric values are valid

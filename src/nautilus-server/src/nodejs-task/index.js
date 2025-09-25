@@ -32,7 +32,10 @@ const requiredEnvVars = [
   "OLLAMA_MODEL",
   "QDRANT_URL",
   "QDRANT_COLLECTION_NAME",
-  "QDRANT_API_KEY"
+  "QDRANT_API_KEY",
+  "AZURE_TEXT_EMBEDDING_API_ENDPOINT",
+  "AZURE_TEXT_EMBEDDING_API_KEY",
+  "TELEGRAM_SOCIAL_TRUTH_BOT_ID"
 ];
 
 console.log("🔧 Validating environment variables passed from Rust app...");
@@ -208,7 +211,10 @@ async function initializeServices() {
     // Initialize all services using factory
     services = {
       refinement: ServiceFactory.createRefinementService('chat'),
-      embedding: ServiceFactory.createEmbeddingService('ollama', {
+      // embedding: ServiceFactory.createEmbeddingService('ollama', {
+      //   batchSize: parseInt(process.env.EMBEDDING_BATCH_SIZE || '50')
+      // }),
+      embedding: ServiceFactory.createEmbeddingService('azure', {
         batchSize: parseInt(process.env.EMBEDDING_BATCH_SIZE || '50')
       }),
       vectorDb: ServiceFactory.createVectorDbService('qdrant', {
@@ -312,11 +318,12 @@ async function processMessagesByMessage(rawData, services, args) {
   // Extract messages from raw data format with proper indexing
   const messages = [];
   const messageIndexMap = new Map(); // Map to track message position in raw structure
-  
+  // ☕ Exclude chats with @social_truth_bot
+  const socialTruthBotId = Number(process.env.TELEGRAM_SOCIAL_TRUTH_BOT_ID);
   if (rawData.chats && Array.isArray(rawData.chats)) {
     for (let chatIndex = 0; chatIndex < rawData.chats.length; chatIndex++) {
       const chat = rawData.chats[chatIndex];
-      if (chat.contents && Array.isArray(chat.contents)) {
+      if (chat.contents && Array.isArray(chat.contents) && chat.chat_id !== socialTruthBotId) {
         for (let contentIndex = 0; contentIndex < chat.contents.length; contentIndex++) {
           const msg = chat.contents[contentIndex];
           const flatIndex = messages.length;
@@ -325,6 +332,7 @@ async function processMessagesByMessage(rawData, services, args) {
             chat_id: chat.chat_id,
             user_id: rawData.user
           });
+
           messageIndexMap.set(flatIndex, {
             chatIndex: chatIndex,
             contentIndex: contentIndex
@@ -366,12 +374,68 @@ async function processMessagesByMessage(rawData, services, args) {
 
   console.log(`📊 Processing ${messages.length} messages in batches of embeddings and vectors...`);
 
-  // Filter messages that have text content
-  const validMessages = messages.filter(msg => 
-    msg.message && typeof msg.message === 'string' && msg.message.trim().length > 0
+  // ☕ 1. Filter out messages that have no text content
+  // ☕ 2. Remove messages that are older than current time less 4 hours
+  // ☕ 3. Remove messages whose content is > 20% emojis (will exclude messages that are only emojis)
+  // ☕ 4. Deduplicate by message text, keeping the latest one (highest date)
+  // ☕ 5. Filter messages that are between 15-20 words long (non-English not accounted for) - choose 5
+  // ☕ 6. Filter messages that are between 20-50 words long (non-English not accounted for) - choose 5
+  // ☕ 7. Messages to be embedded = 10 msgs (10% of max 50 messages per conversation)
+  
+  const currentTime = new Date();
+  const cutoffTime = new Date(currentTime.getTime() - 4 * 60 * 60 * 1000);
+  
+  const nonEmptyMessages = messages.filter(msg => 
+    msg.message &&
+    (typeof msg.message === 'string') &&
+    (msg.message.trim().length > 0)
+    && (new Date(msg.date * 1000) > cutoffTime)
   );
-  console.log(`📝 Found ${validMessages.length} messages with text content`);
+  console.log(`📝 Found ${nonEmptyMessages.length} messages with text content not older than 4 hours`);
+  
+  const nonEmojiMessages = nonEmptyMessages.filter(msg => {
+    const onlyEmojisRegex = /^\p{Emoji_Presentation}+$/u;
+    if (onlyEmojisRegex.test(msg.message)) {
+      return false;
+    }
+    // const atLeastOneEmojiRegex = /\p{Emoji_Presentation}/u;
+    const emojiRegex = /\p{Emoji_Presentation}/gu; // find all emojis
+    // if (msg.message && typeof msg.message === 'string' && msg.message.trim().length > 0) // validated already
+      const emojiMatches = msg.message.match(emojiRegex);
+      const emojiCount = emojiMatches ? emojiMatches.length : 0;
+      const totalCharacters = msg.message.length;
+      const emojiRatio = emojiCount / totalCharacters;
+      // Return the result of the emoji ratio condition
+      return emojiRatio < 0.2;
+  });
+  console.log(`📝 Found ${nonEmojiMessages.length} messages below emoji threshold`);
+  
+  const uniqueMessagesMap = new Map();
 
+  for (const msg of nonEmojiMessages) {
+    const existing = uniqueMessagesMap.get(msg.message);
+    if (!existing || msg.date > existing.date) {
+      uniqueMessagesMap.set(msg.message, msg);
+    }
+  }
+
+  const dedupedMessages = Array.from(uniqueMessagesMap.values());
+  console.log(`📝 After deduplication, ${dedupedMessages.length} unique messages remain`);
+  
+  const mediumLengthMessages = dedupedMessages.filter((msg) => {
+    return msg.message.split(" ").length >= 15 && msg.message.split(" ").length <= 20;
+  });
+    
+  const longLengthMessages = dedupedMessages.filter(msg => {
+    return msg.message.split(" ").length > 20 && msg.message.split(" ").length <= 50;
+  });
+
+  const validMessages = [];
+  // Add up to 5 random messages from mediumLengthMessages and from longLengthMessages
+  validMessages.push(...getRandomItems(mediumLengthMessages, 5));
+  validMessages.push(...getRandomItems(longLengthMessages, 5));
+  console.log(`📝 Found ${validMessages.length} messages to embed`);
+  
   // Create batches with their starting indices
   const allBatches = [];
   for (let i = 0; i < validMessages.length; i += batchSize) {
@@ -500,6 +564,15 @@ async function processMessagesByMessage(rawData, services, args) {
 
   return result;
 }
+
+  // Function to randomly select 'n' items from an array
+  const getRandomItems = (arr, n) => {
+    if (arr.length <= n) {
+      return arr;
+    }
+    const shuffled = [...arr].sort(() => 0.5 - Math.random());
+    return shuffled.slice(0, n);
+  };
 
 async function parallelProcess(items, processFn, concurrency = 4) {
   let index = 0;

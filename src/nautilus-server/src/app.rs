@@ -129,6 +129,10 @@ pub async fn process_data(
     env_vars.insert("OLLAMA_API_URL".to_string(), state.ollama_api_url().to_string());
     env_vars.insert("OLLAMA_MODEL".to_string(), state.ollama_model().to_string());
 
+    // Azure open ai embedding configuration
+    env_vars.insert("AZURE_TEXT_EMBEDDING_API_ENDPOINT".to_string(), state.azure_text_embedding_api_endpoint().to_string());
+    env_vars.insert("AZURE_TEXT_EMBEDDING_API_KEY".to_string(), state.azure_text_embedding_api_key().to_string());
+
     // Qdrant vector database configuration
     env_vars.insert("QDRANT_URL".to_string(), state.qdrant_url().to_string());
     env_vars.insert("QDRANT_COLLECTION_NAME".to_string(), state.qdrant_collection_name().to_string());
@@ -139,6 +143,9 @@ pub async fn process_data(
     // Task processing configuration
     env_vars.insert("EMBEDDING_BATCH_SIZE".to_string(), state.embedding_batch_size_str().to_string());
     env_vars.insert("VECTOR_BATCH_SIZE".to_string(), state.vector_batch_size_str().to_string());
+
+    // Social truth telegram bot configuration
+    env_vars.insert("TELEGRAM_SOCIAL_TRUTH_BOT_ID".to_string(), state.telegram_social_truth_bot_id().to_string());
 
     // Configure task runner
     let mut args = request.payload.args.unwrap_or_default();
@@ -211,6 +218,10 @@ pub async fn embedding_ingest(
     env_vars.insert("OLLAMA_API_URL".to_string(), state.ollama_api_url().to_string());
     env_vars.insert("OLLAMA_MODEL".to_string(), state.ollama_model().to_string());
 
+    // Azure open ai embedding configuration
+    env_vars.insert("AZURE_TEXT_EMBEDDING_API_ENDPOINT".to_string(), state.azure_text_embedding_api_endpoint().to_string());
+    env_vars.insert("AZURE_TEXT_EMBEDDING_API_KEY".to_string(), state.azure_text_embedding_api_key().to_string());
+    
     // Qdrant vector database configuration
     env_vars.insert("QDRANT_URL".to_string(), state.qdrant_url().to_string());
     env_vars.insert("QDRANT_COLLECTION_NAME".to_string(), state.qdrant_collection_name().to_string());
@@ -222,6 +233,9 @@ pub async fn embedding_ingest(
     env_vars.insert("EMBEDDING_BATCH_SIZE".to_string(), state.embedding_batch_size_str().to_string());
     env_vars.insert("VECTOR_BATCH_SIZE".to_string(), state.vector_batch_size_str().to_string());
 
+    // Social truth telegram bot configuration
+    env_vars.insert("TELEGRAM_SOCIAL_TRUTH_BOT_ID".to_string(), state.telegram_social_truth_bot_id().to_string());
+    
     // Configure task runner for embedding operation
     let mut args = vec![
         "--operation".to_string(),
@@ -301,6 +315,10 @@ pub async fn retrieve_messages_by_blob_ids(
     env_vars.insert("OLLAMA_API_URL".to_string(), state.ollama_api_url().to_string());
     env_vars.insert("OLLAMA_MODEL".to_string(), state.ollama_model().to_string());
 
+    // Azure open ai embedding configuration
+    env_vars.insert("AZURE_TEXT_EMBEDDING_API_ENDPOINT".to_string(), state.azure_text_embedding_api_endpoint().to_string());
+    env_vars.insert("AZURE_TEXT_EMBEDDING_API_KEY".to_string(), state.azure_text_embedding_api_key().to_string());
+    
     // Qdrant vector database configuration (not needed but kept for consistency)
     env_vars.insert("QDRANT_URL".to_string(), state.qdrant_url().to_string());
     env_vars.insert("QDRANT_COLLECTION_NAME".to_string(), state.qdrant_collection_name().to_string());
@@ -312,6 +330,9 @@ pub async fn retrieve_messages_by_blob_ids(
     env_vars.insert("EMBEDDING_BATCH_SIZE".to_string(), state.embedding_batch_size_str().to_string());
     env_vars.insert("VECTOR_BATCH_SIZE".to_string(), state.vector_batch_size_str().to_string());
 
+    // Social truth telegram bot configuration
+    env_vars.insert("TELEGRAM_SOCIAL_TRUTH_BOT_ID".to_string(), state.telegram_social_truth_bot_id().to_string());
+    
     // Serialize blob file pairs to JSON
     let blob_file_pairs_json = serde_json::to_string(&request.payload.blob_file_pairs)
         .map_err(|e| EnclaveError::GenericError(format!("Failed to serialize blob file pairs: {}", e)))?;

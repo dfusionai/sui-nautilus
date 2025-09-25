@@ -13,6 +13,9 @@ class ServiceFactory {
       case 'ollama':
         const OllamaEmbedding = require('../embedding/ollama-embedding');
         return new OllamaEmbedding(mergedOptions);
+      case 'azure':
+        const AzureTextEmbedding = require('../embedding/azure-text-embedding');
+        return new AzureTextEmbedding(mergedOptions);
       default:
         throw new Error(`Unsupported embedding service type: ${type}`);
     }
