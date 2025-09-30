@@ -315,35 +315,86 @@ async function runEmbeddingOperation() {
 
 
 async function processMessagesByMessage(rawData, services, args) {
-  // Extract messages from raw data format with proper indexing
-  const messages = [];
-  const messageIndexMap = new Map(); // Map to track message position in raw structure
-  // ☕ Exclude chats with @social_truth_bot
+  const messageIndexMap = new Map();
   const socialTruthBotId = Number(process.env.TELEGRAM_SOCIAL_TRUTH_BOT_ID);
+
+  const selectedMessages = [];
+  const currentTime = new Date();
+  const cutoffTime = new Date(currentTime.getTime() - 4 * 60 * 60 * 1000);
+
   if (rawData.chats && Array.isArray(rawData.chats)) {
     for (let chatIndex = 0; chatIndex < rawData.chats.length; chatIndex++) {
       const chat = rawData.chats[chatIndex];
-      if (chat.contents && Array.isArray(chat.contents) && chat.chat_id !== socialTruthBotId) {
-        for (let contentIndex = 0; contentIndex < chat.contents.length; contentIndex++) {
-          const msg = chat.contents[contentIndex];
-          const flatIndex = messages.length;
-          messages.push({
-            ...msg,
-            chat_id: chat.chat_id,
-            user_id: rawData.user
-          });
+      if (!Array.isArray(chat.contents) || chat.chat_id === socialTruthBotId) continue;
 
-          messageIndexMap.set(flatIndex, {
-            chatIndex: chatIndex,
-            contentIndex: contentIndex
-          });
+      // Attach context
+      const chatMessages = chat.contents.map((msg, contentIndex) => {
+        const flatIndex = selectedMessages.length;
+        const wrapped = {
+          ...msg,
+          chat_id: chat.chat_id,
+          user_id: rawData.user
+        };
+        messageIndexMap.set(flatIndex, { chatIndex, contentIndex });
+        return wrapped;
+      });
+
+      // ☕ 1. Filter out messages that have no text content
+      // ☕ 2. Remove messages that are older than current time less 4 hours
+      // ☕ 3. Remove messages whose content is > 20% emojis (will exclude messages that are only emojis)
+      // ☕ 4. Deduplicate by message text, keeping the latest one (highest date)
+      // ☕ 5. Filter messages that are between 15-20 words long (non-English not accounted for) - choose 5
+      // ☕ 6. Filter messages that are between 20-50 words long (non-English not accounted for) - choose 5
+      // ☕ 7. Messages to be embedded = 10 msgs (10% of max 50 messages per conversation)
+      
+      // 1. Non-empty text messages
+      const nonEmpty = chatMessages.filter(m =>
+        m.message &&
+        typeof m.message === "string" &&
+        m.message.trim().length > 0 &&
+        new Date(m.date * 1000) > cutoffTime
+      );
+
+      // 2. Exclude messages >20% emojis
+      const nonEmoji = nonEmpty.filter(m => {
+        const emojiRegex = /\p{Emoji_Presentation}/gu;
+        const matches = m.message.match(emojiRegex);
+        const emojiCount = matches ? matches.length : 0;
+        return (emojiCount / m.message.length) < 0.2;
+      });
+
+      // 3. Deduplicate by text, keep latest
+      const uniqueMap = new Map();
+      for (const m of nonEmoji) {
+        const existing = uniqueMap.get(m.message);
+        if (!existing || m.date > existing.date) {
+          uniqueMap.set(m.message, m);
         }
       }
+      const deduped = Array.from(uniqueMap.values());
+
+      // 4. Split by word length
+      const medium = deduped.filter(m => {
+        const wc = m.message.split(" ").length;
+        return wc >= 15 && wc <= 20;
+      });
+      const long = deduped.filter(m => {
+        const wc = m.message.split(" ").length;
+        return wc > 20 && wc <= 50;
+      });
+
+      // 5. Pick up to 10 per chat (5 medium + 5 long)
+      const chosen = [
+        ...getRandomItems(medium, 5),
+        ...getRandomItems(long, 5)
+      ];
+
+      selectedMessages.push(...chosen);
     }
   }
 
-  if (!Array.isArray(messages) || messages.length === 0) {
-    console.log('⚠️  No messages to process');
+  if (!selectedMessages.length) {
+    console.log("⚠️ No messages to process");
     return {
       status: "success",
       operation: "embedding",
@@ -355,9 +406,9 @@ async function processMessagesByMessage(rawData, services, args) {
     };
   }
 
-  const batchSize = parseInt(args.processingConfig.batchSize || '64');
+  const batchSize = parseInt(args.processingConfig.batchSize || "64");
   const stats = {
-    totalMessages: messages.length,
+    totalMessages: selectedMessages.length,
     successfulEmbeddings: 0,
     failedEmbeddings: 0,
     successfulWalrusUploads: 0,
@@ -367,80 +418,17 @@ async function processMessagesByMessage(rawData, services, args) {
     errors: []
   };
 
-  // Connect to vector database
   if (!services.vectorDb.isConnected()) {
     await services.vectorDb.connect();
   }
 
-  console.log(`📊 Processing ${messages.length} messages in batches of embeddings and vectors...`);
+  console.log(`📊 Processing ${selectedMessages.length} selected messages in batches of ${batchSize}...`);
 
-  // ☕ 1. Filter out messages that have no text content
-  // ☕ 2. Remove messages that are older than current time less 4 hours
-  // ☕ 3. Remove messages whose content is > 20% emojis (will exclude messages that are only emojis)
-  // ☕ 4. Deduplicate by message text, keeping the latest one (highest date)
-  // ☕ 5. Filter messages that are between 15-20 words long (non-English not accounted for) - choose 5
-  // ☕ 6. Filter messages that are between 20-50 words long (non-English not accounted for) - choose 5
-  // ☕ 7. Messages to be embedded = 10 msgs (10% of max 50 messages per conversation)
-  
-  const currentTime = new Date();
-  const cutoffTime = new Date(currentTime.getTime() - 4 * 60 * 60 * 1000);
-  
-  const nonEmptyMessages = messages.filter(msg => 
-    msg.message &&
-    (typeof msg.message === 'string') &&
-    (msg.message.trim().length > 0)
-    && (new Date(msg.date * 1000) > cutoffTime)
-  );
-  console.log(`📝 Found ${nonEmptyMessages.length} messages with text content not older than 4 hours`);
-  
-  const nonEmojiMessages = nonEmptyMessages.filter(msg => {
-    const onlyEmojisRegex = /^\p{Emoji_Presentation}+$/u;
-    if (onlyEmojisRegex.test(msg.message)) {
-      return false;
-    }
-    // const atLeastOneEmojiRegex = /\p{Emoji_Presentation}/u;
-    const emojiRegex = /\p{Emoji_Presentation}/gu; // find all emojis
-    // if (msg.message && typeof msg.message === 'string' && msg.message.trim().length > 0) // validated already
-      const emojiMatches = msg.message.match(emojiRegex);
-      const emojiCount = emojiMatches ? emojiMatches.length : 0;
-      const totalCharacters = msg.message.length;
-      const emojiRatio = emojiCount / totalCharacters;
-      // Return the result of the emoji ratio condition
-      return emojiRatio < 0.2;
-  });
-  console.log(`📝 Found ${nonEmojiMessages.length} messages below emoji threshold`);
-  
-  const uniqueMessagesMap = new Map();
-
-  for (const msg of nonEmojiMessages) {
-    const existing = uniqueMessagesMap.get(msg.message);
-    if (!existing || msg.date > existing.date) {
-      uniqueMessagesMap.set(msg.message, msg);
-    }
-  }
-
-  const dedupedMessages = Array.from(uniqueMessagesMap.values());
-  console.log(`📝 After deduplication, ${dedupedMessages.length} unique messages remain`);
-  
-  const mediumLengthMessages = dedupedMessages.filter((msg) => {
-    return msg.message.split(" ").length >= 15 && msg.message.split(" ").length <= 20;
-  });
-    
-  const longLengthMessages = dedupedMessages.filter(msg => {
-    return msg.message.split(" ").length > 20 && msg.message.split(" ").length <= 50;
-  });
-
-  const validMessages = [];
-  // Add up to 5 random messages from mediumLengthMessages and from longLengthMessages
-  validMessages.push(...getRandomItems(mediumLengthMessages, 5));
-  validMessages.push(...getRandomItems(longLengthMessages, 5));
-  console.log(`📝 Found ${validMessages.length} messages to embed`);
-  
-  // Create batches with their starting indices
+  // Create batches
   const allBatches = [];
-  for (let i = 0; i < validMessages.length; i += batchSize) {
+  for (let i = 0; i < selectedMessages.length; i += batchSize) {
     allBatches.push({
-      messages: validMessages.slice(i, i + batchSize),
+      messages: selectedMessages.slice(i, i + batchSize),
       startIndex: i
     });
   }
@@ -460,40 +448,34 @@ async function processMessagesByMessage(rawData, services, args) {
         const embeddingResults = await services.embedding.embedBatch(
           batch.map(msg => {
             const datetime = msg.date ? new Date(msg.date * 1000).toISOString() : "";
-            const fromUserId = msg.fromId?.userId || '';
-            const message = msg.message || '';
-            const conversationId = msg.chat_id || '';
-            const ownerUserId = msg.user_id || '';
+            const fromUserId = msg.fromId?.userId || "";
+            const message = msg.message || "";
+            const conversationId = msg.chat_id || "";
+            const ownerUserId = msg.user_id || "";
             return `Date: ${datetime}, From User Id: ${fromUserId}, Message: ${message}, Conversation Id: ${conversationId}, Owner User Id: ${ownerUserId}`;
           })
         );
 
         // Check for embedding failures
         for (let j = 0; j < embeddingResults.length; j++) {
-          const embeddingResult = embeddingResults[j];
-          const message = batch[j];
-          if (!embeddingResult.success) {
-            const error = `Failed to generate embedding for message ${message.id}: ${embeddingResult.error || 'Unknown error'}`;
+          if (!embeddingResults[j].success) {
+            const error = `Failed to generate embedding for message ${batch[j].id}: ${embeddingResults[j].error || "Unknown error"}`;
             console.error(`💥 EMBEDDING FAILURE: ${error}`);
             throw new Error(error);
           }
         }
 
-        // All embeddings successful - collect vectors for batch
-        const vectorBatch = [];
-        for (let j = 0; j < batch.length; j++) {
-          const message = batch[j];
+        // Build vector batch
+        const vectorBatch = batch.map((message, j) => {
           const embeddingResult = embeddingResults[j];
-
           const currentMessageIndex = startIndex + j;
           const rawPosition = messageIndexMap.get(currentMessageIndex);
-
-          const vectorData = {
+          return {
             id: message.id,
             vector: embeddingResult.embedding,
             metadata: {
               message_id: message.id,
-              message_index: currentMessageIndex, // Flat index
+              message_index: currentMessageIndex,
               chat_index: rawPosition?.chatIndex,
               content_index: rawPosition?.contentIndex,
               user_id: message.user_id,
@@ -505,32 +487,27 @@ async function processMessagesByMessage(rawData, services, args) {
               embedding_dimensions: embeddingResult.embedding.length
             }
           };
-          vectorBatch.push(vectorData);
-        }
+        });
 
-        // Store the whole batch at once in vector DB
+        // Store vectors
         const storeResults = await services.vectorDb.storeBatch(vectorBatch);
         for (let r = 0; r < storeResults.length; r++) {
           if (!storeResults[r] || !storeResults[r].success) {
             const failedMessage = batch[r].id;
-            const error = `Failed to store vector for message ${failedMessage}: ${storeResults[r]?.error || 'Unknown error'}`;
+            const error = `Failed to store vector for message ${failedMessage}: ${storeResults[r]?.error || "Unknown error"}`;
             console.error(`💥 VECTOR STORAGE FAILURE: ${error}`);
             throw new Error(error);
           }
         }
 
-        // Update stats (note: this creates a potential race condition, but for counting it's usually acceptable)
         stats.successfulEmbeddings += batch.length;
         stats.successfulVectorStorages += batch.length;
-        
         processedBatches++;
-        console.log(`✅ Batch ${batchNum + 1}/${totalBatches} completed (${processedBatches}/${totalBatches} total)`);
-
+        console.log(`✅ Batch ${batchNum + 1}/${totalBatches} complete`);
         return { success: true, processedCount: batch.length };
       },
-      4 // Concurrency level - adjust based on your system capabilities
+      4
     );
-
   } catch (error) {
     console.error(`💥 PROCESSING FAILED: ${error.message}`);
     return {
@@ -539,24 +516,23 @@ async function processMessagesByMessage(rawData, services, args) {
       processedCount: stats.successfulEmbeddings,
       failureReason: "parallel_processing_failed",
       error: error.message,
-      totalMessages: validMessages.length,
+      totalMessages: selectedMessages.length,
       processedSoFar: stats.successfulEmbeddings
     };
   }
 
-  // If we reach here, all messages were processed successfully
   const result = {
     status: "success",
     operation: "embedding",
-    processedCount: validMessages.length,
-    totalMessages: validMessages.length,
+    processedCount: selectedMessages.length,
+    totalMessages: selectedMessages.length,
     successfulEmbeddings: stats.successfulEmbeddings,
     successfulWalrusUploads: stats.successfulWalrusUploads,
     successfulVectorStorages: stats.successfulVectorStorages,
     message: "All messages processed successfully"
   };
 
-  console.log(`✅ All ${validMessages.length} messages processed successfully!`);
+  console.log(`✅ All ${selectedMessages.length} messages processed successfully!`);
   console.log(`📊 Final Stats: ${stats.successfulEmbeddings} embeddings, ${stats.successfulVectorStorages} vectors stored`);
   console.log("===TASK_RESULT_START===");
   console.log(JSON.stringify(result));
@@ -565,14 +541,17 @@ async function processMessagesByMessage(rawData, services, args) {
   return result;
 }
 
-  // Function to randomly select 'n' items from an array
-  const getRandomItems = (arr, n) => {
-    if (arr.length <= n) {
-      return arr;
-    }
-    const shuffled = [...arr].sort(() => 0.5 - Math.random());
-    return shuffled.slice(0, n);
-  };
+function getRandomItems(arr, n) {
+  if (arr.length <= n) return arr;
+  const copy = [...arr];
+  const result = [];
+  while (result.length < n) {
+    const idx = Math.floor(Math.random() * copy.length);
+    result.push(copy.splice(idx, 1)[0]);
+  }
+  return result;
+}
+
 
 async function parallelProcess(items, processFn, concurrency = 4) {
   let index = 0;
