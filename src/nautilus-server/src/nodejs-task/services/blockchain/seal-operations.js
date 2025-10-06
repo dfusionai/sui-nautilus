@@ -125,6 +125,8 @@ class SealOperations {
           data: new Uint8Array(encryptedFile),
           sessionKey,
           txBytes,
+          checkShareConsistency: false,
+          checkLEEncoding: true,
         });
         console.log(`[decrypt] 🎯 File decrypted`);
       } catch (err) {
