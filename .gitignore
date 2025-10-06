@@ -20,4 +20,4 @@ start.sh
 CLAUDE.md
 
 /.claude
-/src/nautilus-server/nodejs-task/node_modules
+/src/nautilus-server/nodejs-task
