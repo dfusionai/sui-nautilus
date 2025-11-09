@@ -7,7 +7,8 @@ const bech32 = require("bech32");
 class SuiOperations {
   constructor(options = {}) {
     this.options = options;
-    this.suiClient = new SuiClient({ url: getFullnodeUrl("mainnet") });
+    const network = process.env.SUI_NETWORK || "mainnet";
+    this.suiClient = new SuiClient({ url: getFullnodeUrl(network) });
     this.keypair = null;
     this.movePackageId = process.env.MOVE_PACKAGE_ID;
     

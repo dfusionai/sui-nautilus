@@ -53,10 +53,11 @@ class WalrusOperations {
     }
   }
 
-  async fetchEncryptedFile(blobId) {
-    // const walrusUrl = `${this.aggregatorUrl}/v1/blobs/${blobId}`;
+  async fetchEncryptedFile(quiltPatchId) {
+    // This endpoint fetches the blob of a patch using the quilt patch ID
+    // The quilt patch ID comes from the "patch_id" field in patches returned by /v1/quilts/{quilt_id}/patches
     // https://github.com/MystenLabs/walrus-sdk-example-app/blob/6db2b791a102dc7f7ffc202ec89f2a14537177e9/src/components/ImageCard.tsx#L31
-    const walrusUrl = `${this.aggregatorUrl}/v1/blobs/by-quilt-patch-id/${blobId}`;
+    const walrusUrl = `${this.aggregatorUrl}/v1/blobs/by-quilt-patch-id/${quiltPatchId}`;
     
     try {
       console.log(`📥 Fetching encrypted file from ${walrusUrl}`);
