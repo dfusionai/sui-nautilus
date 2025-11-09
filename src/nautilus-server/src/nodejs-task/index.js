@@ -288,19 +288,89 @@ async function runEmbeddingOperation() {
   
   console.log(`✅ Found ${patches.length} patches in quilt`);
   
-  // Step 2: Process each patch
-  const allResults = [];
-  let totalProcessed = 0;
-  let totalSuccessful = 0;
-  let totalFailed = 0;
+  // Step 2: Fetch all patches in parallel using Promise.all() (as recommended by Walrus developer)
+  // This parallelizes blob fetches instead of sequential one-by-one calls
+  console.log(`🚀 Step 2: Fetching ${patches.length} patches in parallel...`);
   
-  for (let i = 0; i < patches.length; i++) {
+  const fetchResults = await Promise.allSettled(
+    patches.map(async (patch, i) => {
+      const patchId = patch.patch_id || patch.identifier;
+      
+      if (!patchId) {
+        throw new Error(`Patch at index ${i} missing patch_id or identifier`);
+      }
+      
+      try {
+        // Fetch encrypted patch blob from Walrus (all fetches happen in parallel!)
+        const encryptedPatch = await services.blockchain.walrus.fetchEncryptedFile(patchId);
+        
+        // Parse encrypted object
+        const encryptedObject = await services.blockchain.seal.parseEncryptedObject(encryptedPatch);
+        
+        // Decrypt patch
+        const decryptedPatch = await services.blockchain.seal.decryptFile(
+          encryptedObject.id,
+          encryptedPatch,
+          parsedArgs.policyObjectId,
+          services.blockchain.sui
+        );
+        
+        return {
+          patchIndex: i,
+          patch: patch,
+          patchId: patchId,
+          encryptedPatch: encryptedPatch,
+          encryptedObject: encryptedObject,
+          decryptedPatch: decryptedPatch,
+          success: true
+        };
+      } catch (error) {
+        return {
+          patchIndex: i,
+          patch: patch,
+          patchId: patchId,
+          success: false,
+          error: error.message
+        };
+      }
+    })
+  );
+  
+  console.log(`✅ Finished fetching patches. Processing ${fetchResults.length} results...`);
+  
+  // Step 3: Process fetched patches sequentially (or in parallel if needed)
+  const allResults = [];
+  
+  for (let i = 0; i < fetchResults.length; i++) {
+    const fetchResult = fetchResults[i];
     const patch = patches[i];
     const patchId = patch.patch_id || patch.identifier;
     
-    if (!patchId) {
-      console.error(`❌ Patch at index ${i} missing patch_id or identifier`);
-      totalFailed++;
+    if (fetchResult.status === 'rejected') {
+      console.error(`❌ Failed to fetch patch ${i + 1} (${patchId}): ${fetchResult.reason}`);
+      allResults.push({
+        patchIndex: i,
+        patchId: patchId,
+        result: {
+          status: "failed",
+          error: `Fetch failed: ${fetchResult.reason}`
+        }
+      });
+      continue;
+    }
+    
+    const fetched = fetchResult.value;
+    
+    if (!fetched.success) {
+      console.error(`❌ Failed to fetch patch ${i + 1} (${patchId}): ${fetched.error}`);
+      allResults.push({
+        patchIndex: i,
+        patchId: patchId,
+        result: {
+          status: "failed",
+          error: `Fetch failed: ${fetched.error}`
+        }
+      });
       continue;
     }
     
@@ -308,63 +378,46 @@ async function runEmbeddingOperation() {
     
     try {
       // Unmask patch tags to get original IDs
-      const unmaskedTags = idUnmasker.unmaskPatchTags(patch);
+      const unmaskedTags = idUnmasker.unmaskPatchTags(fetched.patch);
       console.log(`🔓 Unmasked IDs - User: ${unmaskedTags.userId || 'N/A'}, Chat: ${unmaskedTags.chatId || 'N/A'}, Submission: ${unmaskedTags.submissionId || 'N/A'}`);
       
-      // Step 2a: Fetch encrypted patch blob from Walrus
-      console.log(`📥 Step 2a: Fetching encrypted patch blob from Walrus...`);
-      const encryptedPatch = await services.blockchain.walrus.fetchEncryptedFile(patchId);
-      
-      // Step 2b: Parse encrypted object
-      console.log(`📦 Step 2b: Parsing encrypted patch...`);
-      const encryptedObject = await services.blockchain.seal.parseEncryptedObject(encryptedPatch);
-      
-      // Step 2c: Decrypt patch
-      console.log(`🔓 Step 2c: Decrypting patch...`);
-      const decryptedPatch = await services.blockchain.seal.decryptFile(
-        encryptedObject.id,
-        encryptedPatch,
-        parsedArgs.policyObjectId,
-        services.blockchain.sui
-      );
-      
-      // Step 2d: Process patch (each patch is a chat with messages)
+      // Process patch (each patch is a chat with messages)
       // The decrypted patch should be a single chat object with chat_id and contents
       // We need to wrap it in the expected format for processMessagesByMessage
       let patchData;
       
       // Check if decryptedPatch is already in the full format (with chats array)
-      if (decryptedPatch.chats && Array.isArray(decryptedPatch.chats)) {
+      if (fetched.decryptedPatch.chats && Array.isArray(fetched.decryptedPatch.chats)) {
         // Already in the expected format, but ensure user ID is set from unmasked tags
         // Prioritize userId to match stored format, then fallback to user, then unmasked tags
         patchData = {
-          ...decryptedPatch,
-          user: decryptedPatch.userId || decryptedPatch.user || unmaskedTags.userId || ""
+          ...fetched.decryptedPatch,
+          user: fetched.decryptedPatch.userId || fetched.decryptedPatch.user || unmaskedTags.userId || ""
         };
-      } else if (decryptedPatch.chat_id && decryptedPatch.contents) {
+      } else if (fetched.decryptedPatch.chat_id && fetched.decryptedPatch.contents) {
         // Single chat object (patch format) - wrap it in the expected format
         // Use unmasked chat_id if available, otherwise use decrypted one
-        const chatId = unmaskedTags.chatId ? Number(unmaskedTags.chatId) : decryptedPatch.chat_id;
+        const chatId = unmaskedTags.chatId ? Number(unmaskedTags.chatId) : fetched.decryptedPatch.chat_id;
         // Prioritize userId to match stored format, then fallback to user, then unmasked tags
-        const userId = decryptedPatch.userId || decryptedPatch.user || unmaskedTags.userId || "";
+        const userId = fetched.decryptedPatch.userId || fetched.decryptedPatch.user || unmaskedTags.userId || "";
         patchData = {
-          revision: decryptedPatch.revision || "01.01",
-          source: decryptedPatch.source || "telegramMiner",
+          revision: fetched.decryptedPatch.revision || "01.01",
+          source: fetched.decryptedPatch.source || "telegramMiner",
           user: userId,
-          submission_token: decryptedPatch.submission_token || "token",
+          submission_token: fetched.decryptedPatch.submission_token || "token",
           chats: [{
-            ...decryptedPatch,
+            ...fetched.decryptedPatch,
             chat_id: chatId
           }]
         };
-      } else if (Array.isArray(decryptedPatch)) {
+      } else if (Array.isArray(fetched.decryptedPatch)) {
         // Array of chat objects
         patchData = {
           revision: "01.01",
           source: "telegramMiner",
           user: unmaskedTags.userId || "",
           submission_token: "token",
-          chats: decryptedPatch
+          chats: fetched.decryptedPatch
         };
       } else {
         // Try to extract user from unmasked tags and create a chat object
@@ -377,7 +430,7 @@ async function runEmbeddingOperation() {
           submission_token: "token",
           chats: [{
             chat_id: chatId || 0,
-            contents: Array.isArray(decryptedPatch) ? decryptedPatch : (decryptedPatch.contents || [])
+            contents: Array.isArray(fetched.decryptedPatch) ? fetched.decryptedPatch : (fetched.decryptedPatch.contents || [])
           }]
         };
       }
@@ -394,7 +447,7 @@ async function runEmbeddingOperation() {
         }
       };
       
-      console.log(`🔤 Step 2d: Processing patch messages with embeddings...`);
+      console.log(`🔤 Processing patch messages with embeddings...`);
       const patchResult = await processMessagesByMessage(patchData, services, embeddingArgs);
       
       allResults.push({
@@ -404,11 +457,8 @@ async function runEmbeddingOperation() {
       });
       
       if (patchResult.status === "success") {
-        totalSuccessful += patchResult.processedCount || 0;
-        totalProcessed += patchResult.processedCount || 0;
         console.log(`✅ Patch ${i + 1} processed successfully: ${patchResult.processedCount || 0} messages`);
       } else {
-        totalFailed++;
         console.error(`❌ Patch ${i + 1} processing failed: ${patchResult.error || patchResult.failureReason}`);
       }
       
@@ -422,20 +472,24 @@ async function runEmbeddingOperation() {
           error: error.message
         }
       });
-      totalFailed++;
     }
   }
   
-  // Aggregate results
+  // Aggregate results (recalculate from allResults to ensure accuracy after parallel processing)
+  const successfulResults = allResults.filter(r => r.result.status === "success");
+  const failedResults = allResults.filter(r => r.result.status === "failed");
+  const recalculatedTotalProcessed = successfulResults.reduce((sum, r) => sum + (r.result.processedCount || 0), 0);
+  const recalculatedTotalSuccessful = successfulResults.reduce((sum, r) => sum + (r.result.processedCount || 0), 0);
+  
   const finalResult = {
-    status: totalFailed === 0 ? "success" : (totalSuccessful > 0 ? "partial" : "failed"),
+    status: failedResults.length === 0 ? "success" : (successfulResults.length > 0 ? "partial" : "failed"),
     operation: "embedding",
     quiltId: parsedArgs.quiltId,
     totalPatches: patches.length,
-    processedPatches: allResults.filter(r => r.result.status === "success").length,
-    failedPatches: totalFailed,
-    totalProcessedMessages: totalProcessed,
-    successfulEmbeddings: totalSuccessful,
+    processedPatches: successfulResults.length,
+    failedPatches: failedResults.length,
+    totalProcessedMessages: recalculatedTotalProcessed,
+    successfulEmbeddings: recalculatedTotalSuccessful,
     patchResults: allResults
   };
   
@@ -444,7 +498,7 @@ async function runEmbeddingOperation() {
     process.exit(1);
   } else {
     console.log(`\n✅ Embedding operation completed!`);
-    console.log(`📊 Summary: ${finalResult.processedPatches}/${finalResult.totalPatches} patches processed, ${totalProcessed} messages embedded`);
+    console.log(`📊 Summary: ${finalResult.processedPatches}/${finalResult.totalPatches} patches processed, ${recalculatedTotalProcessed} messages embedded`);
     console.log("===TASK_RESULT_START===");
     console.log(JSON.stringify(finalResult));
     console.log("===TASK_RESULT_END===");
