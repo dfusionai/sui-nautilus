@@ -147,6 +147,9 @@ pub async fn process_data(
     // Social truth telegram bot configuration
     env_vars.insert("TELEGRAM_SOCIAL_TRUTH_BOT_ID".to_string(), state.telegram_social_truth_bot_id().to_string());
 
+    // ID mask salt configuration
+    env_vars.insert("ID_MASK_SALT".to_string(), state.id_mask_salt().to_string());
+
     // Configure task runner
     let mut args = request.payload.args.unwrap_or_default();
     args.push(attestation_info.attestation.enclaveId.clone());
@@ -235,6 +238,9 @@ pub async fn embedding_ingest(
 
     // Social truth telegram bot configuration
     env_vars.insert("TELEGRAM_SOCIAL_TRUTH_BOT_ID".to_string(), state.telegram_social_truth_bot_id().to_string());
+
+    // ID mask salt configuration
+    env_vars.insert("ID_MASK_SALT".to_string(), state.id_mask_salt().to_string());
     
     // Configure task runner for embedding operation
     let mut args = vec![
@@ -332,6 +338,9 @@ pub async fn retrieve_messages_by_blob_ids(
 
     // Social truth telegram bot configuration
     env_vars.insert("TELEGRAM_SOCIAL_TRUTH_BOT_ID".to_string(), state.telegram_social_truth_bot_id().to_string());
+
+    // ID mask salt configuration
+    env_vars.insert("ID_MASK_SALT".to_string(), state.id_mask_salt().to_string());
     
     // Serialize blob file pairs to JSON
     let blob_file_pairs_json = serde_json::to_string(&request.payload.blob_file_pairs)

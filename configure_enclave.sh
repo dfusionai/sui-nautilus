@@ -67,6 +67,7 @@ ENV_VARIABLES=(
     "EMBEDDING_BATCH_SIZE"
     "VECTOR_BATCH_SIZE"
     "TELEGRAM_SOCIAL_TRUTH_BOT_ID"
+    "ID_MASK_SALT"
 )
 
 ############################
@@ -216,6 +217,10 @@ if [[ "$USE_SECRET" =~ ^[Yy]$ ]]; then
                     ;;
                 "TELEGRAM_SOCIAL_TRUTH_BOT_ID")
                     echo "Telegram Auth Bot ID"
+                    read -p "Enter $env_var: " value
+                    ;;
+                "ID_MASK_SALT")
+                    echo "ID mask salt for unmasking IDs from quilt patches"
                     read -p "Enter $env_var: " value
                     ;;
                 *)

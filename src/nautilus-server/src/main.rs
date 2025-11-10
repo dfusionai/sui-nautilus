@@ -44,6 +44,9 @@ async fn main() -> Result<()> {
     // Load Telegram Social Truth Bot configuration
     let telegram_social_truth_bot_id = std::env::var("TELEGRAM_SOCIAL_TRUTH_BOT_ID").expect("TELEGRAM_SOCIAL_TRUTH_BOT_ID must be set");
 
+    // Load ID mask salt configuration
+    let id_mask_salt = std::env::var("ID_MASK_SALT").expect("ID_MASK_SALT must be set");
+
     // Log loaded configuration (without sensitive values)
     info!("Loading Nautilus server configuration:");
     info!("  MOVE_PACKAGE_ID: {}", move_package_id);
@@ -62,6 +65,7 @@ async fn main() -> Result<()> {
     info!("  RUBY_NODES_API_KEY: ****** (hidden)");
     info!("  QDRANT_API_KEY: {}", if qdrant_api_key.is_some() { "****** (hidden)" } else { "not set" });
     info!("  TELEGRAM_SOCIAL_TRUTH_BOT_ID: {}", telegram_social_truth_bot_id);
+    info!("  ID_MASK_SALT: ****** (hidden)");
 
     let state = Arc::new(AppState { 
         eph_kp, 
@@ -81,6 +85,7 @@ async fn main() -> Result<()> {
         embedding_batch_size,
         vector_batch_size,
         telegram_social_truth_bot_id,
+        id_mask_salt,
     });
 
     // Validate configuration before starting server

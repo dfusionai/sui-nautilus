@@ -48,6 +48,9 @@ pub struct AppState {
     
     // Social truth telegram bot configuration
     pub telegram_social_truth_bot_id: String,
+    
+    // ID mask salt configuration
+    pub id_mask_salt: String,
 }
 
 impl AppState {
@@ -143,6 +146,10 @@ impl AppState {
         &self.telegram_social_truth_bot_id
     }
 
+    pub fn id_mask_salt(&self) -> &str {
+        &self.id_mask_salt
+    }
+
     /// Check if all required environment variables are properly configured
     pub fn validate_config(&self) -> Result<(), String> {
         if self.move_package_id.is_empty() {
@@ -189,6 +196,9 @@ impl AppState {
         }
         if self.telegram_social_truth_bot_id.is_empty() {
             return Err("TELEGRAM_SOCIAL_TRUTH_BOT_ID is empty".to_string());
+        }
+        if self.id_mask_salt.is_empty() {
+            return Err("ID_MASK_SALT is empty".to_string());
         }
         
         // Validate that numeric values are valid
@@ -237,6 +247,17 @@ mod tests {
             walrus_aggregator_url: "https://aggregator.walrus-testnet.walrus.space".to_string(),
             walrus_publisher_url: "https://publisher.walrus-testnet.walrus.space".to_string(),
             walrus_epochs: "5".to_string(),
+            ollama_api_url: "http://localhost:11434".to_string(),
+            ollama_model: "nomic-embed-text".to_string(),
+            azure_text_embedding_api_endpoint: "https://example.com".to_string(),
+            azure_text_embedding_api_key: "test-key".to_string(),
+            qdrant_url: "http://localhost:6333".to_string(),
+            qdrant_api_key: None,
+            qdrant_collection_name: "messages".to_string(),
+            embedding_batch_size: "10".to_string(),
+            vector_batch_size: "100".to_string(),
+            telegram_social_truth_bot_id: "123456789".to_string(),
+            id_mask_salt: "test-salt".to_string(),
         };
 
         // Create environment variables map

@@ -8,7 +8,10 @@ class IdUnmasker {
   constructor() {
     // Get mask salt from environment variable (must match the backend server)
     // The salt is used to derive the encryption key
-    this.maskSalt = process.env.ID_MASK_SALT || 'default-mask-salt-change-in-production';
+    if (!process.env.ID_MASK_SALT) {
+      throw new Error('ID_MASK_SALT environment variable must be set');
+    }
+    this.maskSalt = process.env.ID_MASK_SALT;
     
     // Derive encryption key from salt (32 bytes for AES-256)
     const keyHash = crypto.createHash('sha256').update(this.maskSalt).digest();

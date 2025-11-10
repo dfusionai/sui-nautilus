@@ -36,12 +36,12 @@ const requiredEnvVars = [
   "QDRANT_API_KEY",
   "AZURE_TEXT_EMBEDDING_API_ENDPOINT",
   "AZURE_TEXT_EMBEDDING_API_KEY",
-  "TELEGRAM_SOCIAL_TRUTH_BOT_ID"
+  "TELEGRAM_SOCIAL_TRUTH_BOT_ID",
+  "ID_MASK_SALT"
 ];
 
 // Optional but recommended environment variables
 const optionalEnvVars = [
-  "ID_MASK_SALT", // Required for unmasking IDs from quilt patches
   "SUI_NETWORK" // Sui network: mainnet, testnet, devnet, or localnet (defaults to mainnet)
 ];
 
