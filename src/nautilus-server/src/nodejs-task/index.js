@@ -518,7 +518,7 @@ async function processMessagesByMessage(rawData, services, args) {
 
   const selectedMessages = [];
   const currentTime = new Date();
-  const cutoffTime = new Date(currentTime.getTime() - 4 * 60 * 60 * 1000);
+  const cutoffTime = new Date(currentTime.getTime() - 12 * 60 * 60 * 1000);
 
   if (rawData.chats && Array.isArray(rawData.chats)) {
     for (let chatIndex = 0; chatIndex < rawData.chats.length; chatIndex++) {
@@ -549,9 +549,8 @@ async function processMessagesByMessage(rawData, services, args) {
       const nonEmpty = chatMessages.filter(m =>
         m.message &&
         typeof m.message === "string" &&
-        m.message.trim().length > 0
-        //  &&
-        // new Date(m.date * 1000) > cutoffTime
+        m.message.trim().length > 0 &&
+        new Date(m.date * 1000) > cutoffTime
       );
 
       // 2. Exclude messages >20% emojis
