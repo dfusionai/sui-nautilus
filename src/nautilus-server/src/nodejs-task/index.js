@@ -20,6 +20,25 @@ if (!AbortSignal.any) {
 
 const ServiceFactory = require("./services/factory/service-factory");
 const IdUnmasker = require("./utils/id-unmasker");
+const logger = require("./utils/logger");
+const SummaryReporter = require("./utils/summary-reporter");
+const RateLimiter = require("./utils/rate-limiter");
+
+// Enable quiet mode - only write summaries to console, detailed logs go to file
+logger.setQuietMode(true);
+
+// Rate limiting configuration constants
+const MAX_CONCURRENT_FETCHES = 30; // Max concurrent patch operations (each makes 3-5 HTTP requests)
+const FETCH_DELAY_MS = 10; // Delay between operations in milliseconds
+const MAX_RETRIES = 3; // Max retry attempts for 429 rate limit errors
+
+// Patch selection configuration constants
+const GROUP_SIZE = 100; // Group patches into groups of this size
+const SELECT_PER_GROUP = 30; // Select this many patches from each group
+
+// Create summary reporter
+const summaryReporter = new SummaryReporter();
+summaryReporter.start();
 
 // Required environment variables that should be passed from Rust app
 const requiredEnvVars = [
@@ -45,33 +64,38 @@ const optionalEnvVars = [
   "SUI_NETWORK" // Sui network: mainnet, testnet, devnet, or localnet (defaults to mainnet)
 ];
 
-console.log("🔧 Validating environment variables passed from Rust app...");
+logger.log("🔧 Validating environment variables passed from Rust app...");
+logger.log(`📝 Log file: ${logger.getLogFilePath() || 'Not available'}`);
+// Output log file location to console for database capture
+logger.consoleLog(`📝 Detailed logs: ${logger.getLogFilePath() || 'Not available'}`);
 const missingVars = [];
 for (const key of requiredEnvVars) {
   if (!process.env[key]) {
     missingVars.push(key);
-    console.error(`❌ Missing required environment variable: ${key}`);
+    logger.error(`❌ Missing required environment variable: ${key}`);
   } else {
-    console.log(`✅ ${key}: ${key.includes('SECRET') || key.includes('API_KEY') ? '***hidden***' : process.env[key]}`);
+    logger.log(`✅ ${key}: ${key.includes('SECRET') || key.includes('API_KEY') ? '***hidden***' : process.env[key]}`);
   }
 }
 
 if (missingVars.length > 0) {
-  console.error(`💥 Missing ${missingVars.length} required environment variable(s).`);
-  console.error("These should be passed from Rust app via AppState.");
+  logger.error(`💥 Missing ${missingVars.length} required environment variable(s).`);
+  logger.error("These should be passed from Rust app via AppState.");
   process.exit(1);
 }
 
 // Check optional variables
 for (const key of optionalEnvVars) {
   if (!process.env[key]) {
-    console.warn(`⚠️  Missing optional environment variable: ${key} (ID unmasking may not work correctly)`);
+    const warning = `⚠️  Missing optional environment variable: ${key}`;
+    logger.warn(warning);
+    summaryReporter.recordWarning(warning);
   } else {
-    console.log(`✅ ${key}: ${key.includes('SECRET') || key.includes('API_KEY') ? '***hidden***' : process.env[key]}`);
+    logger.log(`✅ ${key}: ${key.includes('SECRET') || key.includes('API_KEY') ? '***hidden***' : process.env[key]}`);
   }
 }
 
-console.log("✅ All required environment variables are available from Rust app");
+logger.log("✅ All required environment variables are available from Rust app");
 
 // Parse CLI arguments for different operations
 const args = process.argv.slice(2);
@@ -80,7 +104,7 @@ const args = process.argv.slice(2);
 const operationIndex = args.indexOf('--operation');
 const operation = operationIndex !== -1 ? args[operationIndex + 1] : 'default';
 
-console.log(`🎯 Operation: ${operation}`);
+logger.log(`🎯 Operation: ${operation}`);
 
 let parsedArgs = {};
 
@@ -93,7 +117,7 @@ if (operation === 'embedding') {
   
   if (quiltIdIndex === -1 || onChainFileObjIdIndex === -1 || 
       policyObjectIdIndex === -1 || thresholdIndex === -1 || args.length < 11) {
-    console.error("Usage for embedding: node index.js --operation embedding --quilt-id <quiltId> --on-chain-file-obj-id <objId> --policy-object-id <policyId> --threshold <threshold> [--batch-size N] <enclaveId>");
+    logger.error("Usage for embedding: node index.js --operation embedding --quilt-id <quiltId> --on-chain-file-obj-id <objId> --policy-object-id <policyId> --threshold <threshold> [--batch-size N] <enclaveId>");
     process.exit(1);
   }
 
@@ -119,15 +143,15 @@ if (operation === 'embedding') {
     processingConfig,
   };
   
-  console.log("📋 Embedding Operation Arguments:");
-  console.log(`  Quilt ID: ${parsedArgs.quiltId}`);
-  console.log(`  OnChainFileObjId: ${parsedArgs.onChainFileObjId}`);
-  console.log(`  PolicyObjectId: ${parsedArgs.policyObjectId}`);
-  console.log(`  Threshold: ${parsedArgs.threshold}`);
-  console.log(`  Enclave ID: ${parsedArgs.enclaveId}`);
-  if (Object.keys(processingConfig).length > 0) {
-    console.log(`  Processing Config:`, processingConfig);
-  }
+logger.log("📋 Embedding Operation Arguments:");
+    logger.log(`  Quilt ID: ${parsedArgs.quiltId}`);
+    logger.log(`  OnChainFileObjId: ${parsedArgs.onChainFileObjId}`);
+    logger.log(`  PolicyObjectId: ${parsedArgs.policyObjectId}`);
+    logger.log(`  Threshold: ${parsedArgs.threshold}`);
+    logger.log(`  Enclave ID: ${parsedArgs.enclaveId}`);
+    if (Object.keys(processingConfig).length > 0) {
+      logger.log(`  Processing Config:`, JSON.stringify(processingConfig));
+    }
   
 } else if (operation === 'retrieve-by-blob-ids') {
   // Retrieve by blob IDs operation: --operation retrieve-by-blob-ids --blob-file-pairs <jsonString> --threshold <threshold> <enclaveId>
@@ -136,7 +160,7 @@ if (operation === 'embedding') {
   
   if (blobFilePairsIndex === -1 || 
       thresholdIndex === -1 || args.length < 7) {
-    console.error("Usage for retrieve-by-blob-ids: node index.js --operation retrieve-by-blob-ids --blob-file-pairs <jsonString> --threshold <threshold> <enclaveId>");
+    logger.error("Usage for retrieve-by-blob-ids: node index.js --operation retrieve-by-blob-ids --blob-file-pairs <jsonString> --threshold <threshold> <enclaveId>");
     process.exit(1);
   }
 
@@ -146,12 +170,12 @@ if (operation === 'embedding') {
   try {
     blobFilePairs = JSON.parse(blobFilePairsStr);
   } catch (error) {
-    console.error("❌ Failed to parse blob file pairs JSON:", error.message);
+    logger.error("❌ Failed to parse blob file pairs JSON:", error.message);
     process.exit(1);
   }
   
   if (!Array.isArray(blobFilePairs) || blobFilePairs.length === 0) {
-    console.error("❌ No valid blob file pairs provided");
+    logger.error("❌ No valid blob file pairs provided");
     process.exit(1);
   }
   
@@ -159,12 +183,12 @@ if (operation === 'embedding') {
   for (let i = 0; i < blobFilePairs.length; i++) {
     const pair = blobFilePairs[i];
     if (!pair.walrusBlobId || !pair.onChainFileObjId || !pair.policyObjectId) {
-      console.error(`❌ Invalid blob file pair at index ${i}: missing walrusBlobId, onChainFileObjId, or policyObjectId`);
+      logger.error(`❌ Invalid blob file pair at index ${i}: missing walrusBlobId, onChainFileObjId, or policyObjectId`);
       process.exit(1);
     }
     // Validate message indices if provided
     if (pair.messageIndices && !Array.isArray(pair.messageIndices)) {
-      console.error(`❌ Invalid blob file pair at index ${i}: messageIndices must be an array`);
+      logger.error(`❌ Invalid blob file pair at index ${i}: messageIndices must be an array`);
       process.exit(1);
     }
   }
@@ -177,21 +201,21 @@ if (operation === 'embedding') {
     processingConfig: {},
   };
   
-  console.log("📋 Retrieve by Blob IDs Operation Arguments:");
-  console.log(`  Blob File Pairs: ${blobFilePairs.length} pairs`);
+  logger.log("📋 Retrieve by Blob IDs Operation Arguments:");
+  logger.log(`  Blob File Pairs: ${blobFilePairs.length} pairs`);
   blobFilePairs.forEach((pair, index) => {
     const indicesInfo = pair.messageIndices ? ` (indices: ${pair.messageIndices.join(',')})` : ' (all messages)';
-    console.log(`    ${index + 1}. Blob ID: ${pair.walrusBlobId}, File ID: ${pair.onChainFileObjId}, Policy ID: ${pair.policyObjectId}${indicesInfo}`);
+    logger.log(`    ${index + 1}. Blob ID: ${pair.walrusBlobId}, File ID: ${pair.onChainFileObjId}, Policy ID: ${pair.policyObjectId}${indicesInfo}`);
   });
-  console.log(`  Threshold: ${parsedArgs.threshold}`);
-  console.log(`  Enclave ID: ${parsedArgs.enclaveId}`);
+  logger.log(`  Threshold: ${parsedArgs.threshold}`);
+  logger.log(`  Enclave ID: ${parsedArgs.enclaveId}`);
   
-} else {
-  // Default operation (refinement): <blobId> <onChainFileObjId> <policyObjectId> <threshold> <enclaveId>
-  if (args.length < 5) {
-    console.error("Usage: node index.js <blobId> <onChainFileObjId> <policyObjectId> <threshold> <enclaveId>");
-    process.exit(1);
-  }
+  } else {
+    // Default operation (refinement): <blobId> <onChainFileObjId> <policyObjectId> <threshold> <enclaveId>
+    if (args.length < 5) {
+      logger.error("Usage: node index.js <blobId> <onChainFileObjId> <policyObjectId> <threshold> <enclaveId>");
+      process.exit(1);
+    }
   
   const [blobId, onChainFileObjId, policyObjectId, threshold, enclaveId] = args.slice(0, 5);
 
@@ -208,12 +232,12 @@ if (operation === 'embedding') {
     processingConfig,
   };
   
-  console.log("📋 Default Operation Arguments:");   
-  console.log(`  BlobId: ${blobId}`);
-  console.log(`  OnChainFileObjId: ${onChainFileObjId}`);
-  console.log(`  PolicyObjectId: ${policyObjectId}`);
-  console.log(`  Threshold: ${threshold}`);
-  console.log(`  EnclaveId: ${enclaveId}`);
+  logger.log("📋 Default Operation Arguments:");   
+  logger.log(`  BlobId: ${blobId}`);
+  logger.log(`  OnChainFileObjId: ${onChainFileObjId}`);
+  logger.log(`  PolicyObjectId: ${policyObjectId}`);
+  logger.log(`  Threshold: ${threshold}`);
+  logger.log(`  EnclaveId: ${enclaveId}`);
 }
 
 
@@ -222,7 +246,7 @@ let services = {};
 
 async function initializeServices() {
   try {
-    console.log("🔧 Initializing all services...");
+    logger.log("🔧 Initializing all services...");
     
     // Initialize all services using factory
     services = {
@@ -242,10 +266,10 @@ async function initializeServices() {
     // Initialize blockchain services
     await services.blockchain.sui.initialize();
     
-    console.log("✅ All services initialized successfully");
+    logger.log("✅ All services initialized successfully");
     return services;
   } catch (error) {
-    console.error("❌ Failed to initialize services:", error.message);
+    logger.error("❌ Failed to initialize services:", error.message);
     throw error;
   }
 }
@@ -253,7 +277,7 @@ async function initializeServices() {
 // --- Main Task Runner ---
 async function runTasks() {
   try {
-    console.log("🚀 Starting task execution...");
+    logger.log("🚀 Starting task execution...");
     
     // Initialize all services
     await initializeServices();
@@ -267,79 +291,138 @@ async function runTasks() {
     }
     
   } catch (error) {
-    console.error("💥 Task failed:", error.stack || error.message);
+    logger.error("💥 Task failed:", error.stack || error.message);
     process.exit(1);
   }
 }
 
 async function runEmbeddingOperation() {
-  console.log("🔤 Running Embedding Operation...");
+  logger.log("🔤 Running Embedding Operation...");
   
   // Initialize ID unmasker for unmasking patch tags
   const idUnmasker = new IdUnmasker();
   
   // Step 1: Fetch all patches from the quilt
-  console.log("📥 Step 1: Fetching all patches from quilt...");
+  logger.log("📥 Step 1: Fetching all patches from quilt...");
   const patches = await services.blockchain.walrus.fetchQuiltPatches(parsedArgs.quiltId);
   
   if (!patches || patches.length === 0) {
-    console.error("❌ No patches found in quilt");
+    logger.error("❌ No patches found in quilt");
     process.exit(1);
   }
   
-  console.log(`✅ Found ${patches.length} patches in quilt`);
+  logger.log(`✅ Found ${patches.length} patches in quilt`);
   
-  // Step 2: Fetch all patches in parallel using Promise.all() (as recommended by Walrus developer)
-  // This parallelizes blob fetches instead of sequential one-by-one calls
-  console.log(`🚀 Step 2: Fetching ${patches.length} patches in parallel...`);
+  // Group patches into groups, then randomly select from each group
+  const groups = [];
+  for (let i = 0; i < patches.length; i += GROUP_SIZE) {
+    groups.push(patches.slice(i, i + GROUP_SIZE));
+  }
   
-  const fetchResults = await Promise.allSettled(
-    patches.map(async (patch, i) => {
-      // The patch object from /v1/quilts/{quilt_id}/patches has a "patch_id" field
-      // This is the quilt patch ID used with /v1/blobs/by-quilt-patch-id/{quilt_patch_id}
-      const patchId = patch.patch_id || patch.id || patch.identifier;
+  logger.log(`📦 Grouped ${patches.length} patches into ${groups.length} groups of up to ${GROUP_SIZE} patches each`);
+  
+  // Select 30 patches from each group
+  const originalTotalPatches = patches.length;
+  const selectedPatches = [];
+  
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i];
+    const selectCount = Math.min(SELECT_PER_GROUP, group.length);
+    const groupSelected = getRandomItems(group, selectCount);
+    selectedPatches.push(...groupSelected);
+    logger.log(`   Group ${i + 1} (${group.length} patches): selected ${selectCount} patches`);
+  }
+  
+  logger.log(`🎲 Selected ${selectedPatches.length} patches total (${SELECT_PER_GROUP} from each group of ${GROUP_SIZE})`);
+  logger.log(`⏭️  Skipping ${originalTotalPatches - selectedPatches.length} patches`);
+  
+  // Record patch selection in summary reporter
+  summaryReporter.recordPatchSelection(originalTotalPatches, selectedPatches.length);
+  
+  // Use only the selected patches for processing
+  patches = selectedPatches;
+  
+  // Create rate limiter to prevent overwhelming the API (reduce 429 errors)
+  // IMPORTANT: Each patch operation makes multiple HTTP requests:
+  // - 1 to Walrus aggregator (fetchEncryptedFile)
+  // - Multiple to Sui RPC (tx.build in sealApprove, sessionKey.create, etc.)
+  // - Requests to Ruby Nodes API (via SealClient)
+  // With retry logic, we can balance speed and rate limit safety
+  // Walrus aggregator defaults: max 256 concurrent, 384 buffer
+  // Using constants: MAX_CONCURRENT_FETCHES concurrent patches (each makes 3-5 HTTP requests = ~60-100 total concurrent)
+  const rateLimiter = new RateLimiter(MAX_CONCURRENT_FETCHES, FETCH_DELAY_MS, MAX_RETRIES);
+  
+  logger.log(`🚀 Step 2: Fetching ${patches.length} patches with rate limiting (max ${MAX_CONCURRENT_FETCHES} concurrent, ${FETCH_DELAY_MS}ms delay, ${MAX_RETRIES} retries for 429 errors)...`);
+  
+  // Create fetch functions
+  const fetchFunctions = patches.map((patch, i) => async () => {
+    // The patch object from /v1/quilts/{quilt_id}/patches has a "patch_id" field
+    // This is the quilt patch ID used with /v1/blobs/by-quilt-patch-id/{quilt_patch_id}
+    const patchId = patch.patch_id || patch.id || patch.identifier;
+    
+    if (!patchId) {
+      throw new Error(`Patch at index ${i} missing patch_id field (expected from /v1/quilts/{quilt_id}/patches)`);
+    }
+    
+    try {
+      // Fetch encrypted patch blob from Walrus (rate limited!)
+      const encryptedPatch = await services.blockchain.walrus.fetchEncryptedFile(patchId);
       
-      if (!patchId) {
-        throw new Error(`Patch at index ${i} missing patch_id field (expected from /v1/quilts/{quilt_id}/patches)`);
-      }
+      // Parse encrypted object
+      const encryptedObject = await services.blockchain.seal.parseEncryptedObject(encryptedPatch);
       
-      try {
-        // Fetch encrypted patch blob from Walrus (all fetches happen in parallel!)
-        const encryptedPatch = await services.blockchain.walrus.fetchEncryptedFile(patchId);
-        
-        // Parse encrypted object
-        const encryptedObject = await services.blockchain.seal.parseEncryptedObject(encryptedPatch);
-        
-        // Decrypt patch
-        const decryptedPatch = await services.blockchain.seal.decryptFile(
-          encryptedObject.id,
-          encryptedPatch,
-          parsedArgs.policyObjectId,
-          services.blockchain.sui
-        );
-        
-        return {
-          patchIndex: i,
-          patch: patch,
-          patchId: patchId,
-          encryptedPatch: encryptedPatch,
-          encryptedObject: encryptedObject,
-          decryptedPatch: decryptedPatch,
-          success: true
-        };
-      } catch (error) {
-        return {
-          patchIndex: i,
-          patch: patch,
-          patchId: patchId,
-          success: false,
-          error: error.message
-        };
-      }
-    })
-  );
+      // Decrypt patch
+      const decryptedPatch = await services.blockchain.seal.decryptFile(
+        encryptedObject.id,
+        encryptedPatch,
+        parsedArgs.policyObjectId,
+        services.blockchain.sui
+      );
+      
+      return {
+        patchIndex: i,
+        patch: patch,
+        patchId: patchId,
+        encryptedPatch: encryptedPatch,
+        encryptedObject: encryptedObject,
+        decryptedPatch: decryptedPatch,
+        success: true
+      };
+    } catch (error) {
+      return {
+        patchIndex: i,
+        patch: patch,
+        patchId: patchId,
+        success: false,
+        error: error.message
+      };
+    }
+  });
   
-  console.log(`✅ Finished fetching patches. Processing ${fetchResults.length} results...`);
+  // Execute with rate limiting
+  const fetchResults = await rateLimiter.executeAll(fetchFunctions);
+  
+  // Aggregate fetch results for better error reporting
+  const successfulFetches = fetchResults.filter(r => r.status === 'fulfilled' && r.value.success).length;
+  const failedFetches = fetchResults.length - successfulFetches;
+  
+  if (failedFetches > 0) {
+    logger.log(`⚠️  Finished fetching patches: ${successfulFetches} succeeded, ${failedFetches} failed`);
+    // Only log detailed errors if there are relatively few failures (to avoid spam)
+    if (failedFetches <= 10) {
+      fetchResults.forEach((result, i) => {
+        if (result.status === 'rejected' || (result.status === 'fulfilled' && !result.value.success)) {
+          const patchId = patches[i].patch_id || patches[i].id || patches[i].identifier || `index ${i}`;
+          const error = result.status === 'rejected' ? result.reason?.message : result.value.error;
+          logger.error(`❌ Failed to fetch patch ${i + 1} (${patchId}): ${error}`);
+        }
+      });
+    } else {
+      logger.error(`❌ ${failedFetches} patches failed to fetch. Details suppressed to reduce log noise.`);
+    }
+  } else {
+    logger.log(`✅ Finished fetching patches. All ${fetchResults.length} patches fetched successfully.`);
+  }
   
   // Step 3: Process fetched patches sequentially (or in parallel if needed)
   const allResults = [];
@@ -352,7 +435,7 @@ async function runEmbeddingOperation() {
     const patchId = patch.patch_id || patch.id || patch.identifier;
     
     if (fetchResult.status === 'rejected') {
-      console.error(`❌ Failed to fetch patch ${i + 1} (${patchId}): ${fetchResult.reason}`);
+      // Error already logged in aggregate above, skip individual logging
       allResults.push({
         patchIndex: i,
         patchId: patchId,
@@ -367,7 +450,7 @@ async function runEmbeddingOperation() {
     const fetched = fetchResult.value;
     
     if (!fetched.success) {
-      console.error(`❌ Failed to fetch patch ${i + 1} (${patchId}): ${fetched.error}`);
+      // Error already logged in aggregate above, skip individual logging
       allResults.push({
         patchIndex: i,
         patchId: patchId,
@@ -379,12 +462,12 @@ async function runEmbeddingOperation() {
       continue;
     }
     
-    console.log(`\n📦 Processing patch ${i + 1}/${patches.length} (patch_id: ${patchId})`);
+    logger.log(`\n📦 Processing patch ${i + 1}/${patches.length} (patch_id: ${patchId})`);
     
     try {
       // Unmask patch tags to get original IDs
       const unmaskedTags = idUnmasker.unmaskPatchTags(fetched.patch);
-      // console.log(`🔓 Unmasked IDs - User: ${unmaskedTags.userId || 'N/A'}, Chat: ${unmaskedTags.chatId || 'N/A'}, Submission: ${unmaskedTags.submissionId || 'N/A'}`);
+      // logger.log(`🔓 Unmasked IDs - User: ${unmaskedTags.userId || 'N/A'}, Chat: ${unmaskedTags.chatId || 'N/A'}, Submission: ${unmaskedTags.submissionId || 'N/A'}`);
       
       // Process patch (each patch is a chat with messages)
       // The decrypted patch should be a single chat object with chat_id and contents
@@ -452,7 +535,7 @@ async function runEmbeddingOperation() {
         }
       };
       
-      console.log(`🔤 Processing patch messages with embeddings...`);
+      logger.log(`🔤 Processing patch messages with embeddings...`);
       const patchResult = await processMessagesByMessage(patchData, services, embeddingArgs);
       
       allResults.push({
@@ -462,13 +545,23 @@ async function runEmbeddingOperation() {
       });
       
       if (patchResult.status === "success") {
-        console.log(`✅ Patch ${i + 1} processed successfully: ${patchResult.processedCount || 0} messages`);
+        logger.log(`✅ Patch ${i + 1} processed successfully: ${patchResult.processedCount || 0} messages`);
+        summaryReporter.recordPatchProcessed(
+          true,
+          patchResult.processedCount || 0,
+          patchResult.successfulEmbeddings || 0,
+          patchResult.successfulVectorStorages || 0
+        );
       } else {
-        console.error(`❌ Patch ${i + 1} processing failed: ${patchResult.error || patchResult.failureReason}`);
+        logger.error(`❌ Patch ${i + 1} processing failed: ${patchResult.error || patchResult.failureReason}`);
+        summaryReporter.recordPatchProcessed(false);
+        summaryReporter.recordError(`Patch ${i + 1} processing failed: ${patchResult.error || patchResult.failureReason}`);
       }
       
     } catch (error) {
-      console.error(`❌ Failed to process patch ${i + 1} (${patchId}): ${error.message}`);
+      logger.error(`❌ Failed to process patch ${i + 1} (${patchId}): ${error.message}`);
+      summaryReporter.recordPatchProcessed(false);
+      summaryReporter.recordError(`Failed to process patch ${i + 1} (${patchId}): ${error.message}`);
       allResults.push({
         patchIndex: i,
         patchId: patchId,
@@ -498,15 +591,29 @@ async function runEmbeddingOperation() {
     patchResults: allResults
   };
   
+  summaryReporter.end();
+  const summary = summaryReporter.generateSummary();
+  
+  // Include summary in result data
+  finalResult.summary = summary;
+  
   if (finalResult.status === "failed") {
-    console.error("❌ Embedding operation failed for all patches!");
+    logger.error("❌ Embedding operation failed for all patches!");
+    summaryReporter.printSummary(logger);
+    logger.log("===TASK_RESULT_START===");
+    logger.log(JSON.stringify(finalResult));
+    logger.log("===TASK_RESULT_END===");
     process.exit(1);
   } else {
-    console.log(`\n✅ Embedding operation completed!`);
-    console.log(`📊 Summary: ${finalResult.processedPatches}/${finalResult.totalPatches} patches processed, ${recalculatedTotalProcessed} messages embedded`);
-    console.log("===TASK_RESULT_START===");
-    console.log(JSON.stringify(finalResult));
-    console.log("===TASK_RESULT_END===");
+    logger.log(`\n✅ Embedding operation completed!`);
+    logger.log(`📊 Summary: ${finalResult.processedPatches}/${finalResult.totalPatches} patches processed, ${recalculatedTotalProcessed} messages embedded`);
+    
+    // Print summary report to console (for database capture)
+    summaryReporter.printSummary(logger);
+    
+    logger.log("===TASK_RESULT_START===");
+    logger.log(JSON.stringify(finalResult));
+    logger.log("===TASK_RESULT_END===");
     process.exit(0);
   }
 }
@@ -518,7 +625,7 @@ async function processMessagesByMessage(rawData, services, args) {
 
   const selectedMessages = [];
   const currentTime = new Date();
-  const cutoffTime = new Date(currentTime.getTime() - 12 * 60 * 60 * 1000);
+  const cutoffTime = new Date(currentTime.getTime() - 16 * 60 * 60 * 1000);
 
   if (rawData.chats && Array.isArray(rawData.chats)) {
     for (let chatIndex = 0; chatIndex < rawData.chats.length; chatIndex++) {
@@ -538,7 +645,7 @@ async function processMessagesByMessage(rawData, services, args) {
       });
 
       // ☕ 1. Filter out messages that have no text content
-      // ☕ 2. Remove messages that are older than current time less 4 hours
+      // ☕ 2. Remove messages that are older than current time less 16 hours
       // ☕ 3. Remove messages whose content is > 20% emojis (will exclude messages that are only emojis)
       // ☕ 4. Deduplicate by message text, keeping the latest one (highest date)
       // ☕ 5. Filter messages that are between 15-20 words long (non-English not accounted for) - choose 5
@@ -592,7 +699,7 @@ async function processMessagesByMessage(rawData, services, args) {
   }
 
   if (!selectedMessages.length) {
-    console.log("⚠️ No messages to process");
+    logger.log("⚠️ No messages to process");
     return {
       status: "success",
       operation: "embedding",
@@ -620,7 +727,7 @@ async function processMessagesByMessage(rawData, services, args) {
     await services.vectorDb.connect();
   }
 
-  console.log(`📊 Processing ${selectedMessages.length} selected messages in batches of ${batchSize}...`);
+  logger.log(`📊 Processing ${selectedMessages.length} selected messages in batches of ${batchSize}...`);
 
   // Create batches
   const allBatches = [];
@@ -640,7 +747,7 @@ async function processMessagesByMessage(rawData, services, args) {
       async (batchData, batchNum) => {
         const { messages: batch, startIndex } = batchData;
         
-        console.log(`📦 Processing batch ${batchNum + 1}/${totalBatches} (${batch.length} messages)`);
+        logger.log(`📦 Processing batch ${batchNum + 1}/${totalBatches} (${batch.length} messages)`);
 
         // Generate embeddings for this batch
         const embeddingResults = await services.embedding.embedBatch(
@@ -658,7 +765,7 @@ async function processMessagesByMessage(rawData, services, args) {
         for (let j = 0; j < embeddingResults.length; j++) {
           if (!embeddingResults[j].success) {
             const error = `Failed to generate embedding for message ${batch[j].id}: ${embeddingResults[j].error || "Unknown error"}`;
-            console.error(`💥 EMBEDDING FAILURE: ${error}`);
+            logger.error(`💥 EMBEDDING FAILURE: ${error}`);
             throw new Error(error);
           }
         }
@@ -693,7 +800,7 @@ async function processMessagesByMessage(rawData, services, args) {
           if (!storeResults[r] || !storeResults[r].success) {
             const failedMessage = batch[r].id;
             const error = `Failed to store vector for message ${failedMessage}: ${storeResults[r]?.error || "Unknown error"}`;
-            console.error(`💥 VECTOR STORAGE FAILURE: ${error}`);
+            logger.error(`💥 VECTOR STORAGE FAILURE: ${error}`);
             throw new Error(error);
           }
         }
@@ -701,13 +808,14 @@ async function processMessagesByMessage(rawData, services, args) {
         stats.successfulEmbeddings += batch.length;
         stats.successfulVectorStorages += batch.length;
         processedBatches++;
-        console.log(`✅ Batch ${batchNum + 1}/${totalBatches} complete`);
+        logger.log(`✅ Batch ${batchNum + 1}/${totalBatches} complete`);
         return { success: true, processedCount: batch.length };
       },
       4
     );
   } catch (error) {
-    console.error(`💥 PROCESSING FAILED: ${error.message}`);
+    logger.error(`💥 PROCESSING FAILED: ${error.message}`);
+    summaryReporter.recordError(`Processing failed: ${error.message}`);
     return {
       status: "failed",
       operation: "embedding",
@@ -730,11 +838,15 @@ async function processMessagesByMessage(rawData, services, args) {
     message: "All messages processed successfully"
   };
 
-  console.log(`✅ All ${selectedMessages.length} messages processed successfully!`);
-  console.log(`📊 Final Stats: ${stats.successfulEmbeddings} embeddings, ${stats.successfulVectorStorages} vectors stored`);
-  console.log("===TASK_RESULT_START===");
-  console.log(JSON.stringify(result));
-  console.log("===TASK_RESULT_END===");
+  logger.log(`✅ All ${selectedMessages.length} messages processed successfully!`);
+  logger.log(`📊 Final Stats: ${stats.successfulEmbeddings} embeddings, ${stats.successfulVectorStorages} vectors stored`);
+  
+  // Note: Don't record here - let the caller (patch processing loop) record it
+  // This prevents double counting when processMessagesByMessage is called from patch processing
+  
+  logger.log("===TASK_RESULT_START===");
+  logger.log(JSON.stringify(result));
+  logger.log("===TASK_RESULT_END===");
 
   return result;
 }
@@ -773,10 +885,10 @@ async function parallelProcess(items, processFn, concurrency = 4) {
 
 
 async function runRetrieveByBlobIdsOperation() {
-  console.log("📦 Running Optimized Message Retrieval by Blob IDs with Message Indices...");
+  logger.log("📦 Running Optimized Message Retrieval by Blob IDs with Message Indices...");
   
   try {
-    console.log(`📊 Processing ${parsedArgs.blobFilePairs.length} blob file pairs...`);
+    logger.log(`📊 Processing ${parsedArgs.blobFilePairs.length} blob file pairs...`);
     
     const retrievedMessages = [];
     
@@ -802,34 +914,34 @@ async function runRetrieveByBlobIdsOperation() {
       }
     }
     
-    console.log(`📦 Optimized to ${Object.keys(fileGroups).length} unique file downloads`);
+    logger.log(`📦 Optimized to ${Object.keys(fileGroups).length} unique file downloads`);
     
     // Process each unique file group
     for (const [key, group] of Object.entries(fileGroups)) {
       const { walrusBlobId, onChainFileObjId, policyObjectId, messageIndices } = group;
       
-      console.log(`📥 Processing file: ${walrusBlobId} (${onChainFileObjId})`);
+      logger.log(`📥 Processing file: ${walrusBlobId} (${onChainFileObjId})`);
       const indicesInfo = messageIndices ? `indices: ${Array.from(messageIndices).join(',')}` : 'all messages';
-      console.log(`   Retrieving: ${indicesInfo}`);
+      logger.log(`   Retrieving: ${indicesInfo}`);
       
       try {
         // Step 1: Fetch encrypted file from Walrus (once per unique file)
-        console.log(`📥 Fetching encrypted file from Walrus...`);
+        logger.log(`📥 Fetching encrypted file from Walrus...`);
         const encryptedFile = await services.blockchain.walrus.fetchEncryptedFile(walrusBlobId);
         
         // Step 2: Parse encrypted object
-        console.log(`📦 Parsing encrypted object...`);
+        logger.log(`📦 Parsing encrypted object...`);
         const encryptedObject = await services.blockchain.seal.parseEncryptedObject(encryptedFile);
         
         // Step 3: Register attestation for decryption
-        // console.log(`🔗 Registering attestation...`);
+        // logger.log(`🔗 Registering attestation...`);
         // const attestationObjId = await services.blockchain.sui.registerAttestation(
         //   encryptedObject.id, 
         //   parsedArgs.enclaveId, 
         // );
         
         // Step 4: Decrypt file once
-        console.log(`🔓 Decrypting refined file...`);
+        logger.log(`🔓 Decrypting refined file...`);
         const decryptedFile = await services.blockchain.seal.decryptFile(
           encryptedObject.id,
           // attestationObjId,
@@ -876,7 +988,7 @@ async function runRetrieveByBlobIdsOperation() {
                 // attestation_obj_id: attestationObjId
               });
             });
-            console.log(`✅ Retrieved all ${flatMessages.length} messages from ${walrusBlobId}`);
+            logger.log(`✅ Retrieved all ${flatMessages.length} messages from ${walrusBlobId}`);
           } else {
             retrievedMessages.push({
               walrus_blob_id: walrusBlobId,
@@ -901,7 +1013,7 @@ async function runRetrieveByBlobIdsOperation() {
                 encrypted_object_id: encryptedObject.id,
                 // attestation_obj_id: attestationObjId
               });
-              console.log(`✅ Retrieved message at index ${messageIndex} from ${walrusBlobId}`);
+              logger.log(`✅ Retrieved message at index ${messageIndex} from ${walrusBlobId}`);
             } else {
               retrievedMessages.push({
                 walrus_blob_id: walrusBlobId,
@@ -911,13 +1023,13 @@ async function runRetrieveByBlobIdsOperation() {
                 status: 'failed',
                 error: `Message not found at index ${messageIndex}`
               });
-              console.log(`❌ Message not found at index ${messageIndex} in ${walrusBlobId}`);
+              logger.log(`❌ Message not found at index ${messageIndex} in ${walrusBlobId}`);
             }
           }
         }
         
       } catch (error) {
-        console.error(`❌ Failed to process file ${walrusBlobId}: ${error.message}`);
+        logger.error(`❌ Failed to process file ${walrusBlobId}: ${error.message}`);
         
         // Add failed result for this entire file group
         const affectedIndices = messageIndices ? Array.from(messageIndices) : ['all'];
@@ -951,15 +1063,26 @@ async function runRetrieveByBlobIdsOperation() {
       failed_retrievals: retrievedMessages.filter(msg => msg.status === 'failed').length
     };
     
-    console.log("✅ Optimized blob ID retrieval completed!");
-    console.log(`📊 Processed ${result.total_files_processed} unique files, retrieved ${result.total_messages_retrieved} messages (${result.successful_retrievals} successful, ${result.failed_retrievals} failed)`);
-    console.log("===TASK_RESULT_START===");
-    console.log(JSON.stringify(result));
-    console.log("===TASK_RESULT_END===");
+    summaryReporter.end();
+    const summary = summaryReporter.generateSummary();
+    
+    // Include summary in result data
+    result.summary = summary;
+    
+    summaryReporter.printSummary(logger);
+    
+    logger.log("✅ Optimized blob ID retrieval completed!");
+    logger.log(`📊 Processed ${result.total_files_processed} unique files, retrieved ${result.total_messages_retrieved} messages (${result.successful_retrievals} successful, ${result.failed_retrievals} failed)`);
+    logger.log("===TASK_RESULT_START===");
+    logger.log(JSON.stringify(result));
+    logger.log("===TASK_RESULT_END===");
     process.exit(0);
     
   } catch (error) {
-    console.error("💥 Optimized blob ID retrieval operation failed:", error.message);
+    logger.error("💥 Optimized blob ID retrieval operation failed:", error.message);
+    
+    summaryReporter.end();
+    const summary = summaryReporter.generateSummary();
     
     const result = {
       status: "failed",
@@ -970,61 +1093,70 @@ async function runRetrieveByBlobIdsOperation() {
         policy_object_id: pair.policyObjectId,
         message_indices: pair.messageIndices || null
       })),
-      error: error.message
+      error: error.message,
+      summary: summary
     };
     
-    console.log("===TASK_RESULT_START===");
-    console.log(JSON.stringify(result));
-    console.log("===TASK_RESULT_END===");
+    summaryReporter.printSummary(logger);
+    logger.log("===TASK_RESULT_START===");
+    logger.log(JSON.stringify(result));
+    logger.log("===TASK_RESULT_END===");
     process.exit(1);
   }
 }
 
 async function runDefaultOperation() {
   console.time('⌚ runDefaultOperation <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<');
-  console.log("📝📝📝📝📝📝📝📝📝📝📝📝📝📝📝📝📝📝📝📝 Running Default Operation...");
+  logger.log("📝📝📝📝📝📝📝📝📝📝📝📝📝📝📝📝📝📝📝📝 Running Default Operation...");
   
   // Step 1: Check if blobId is a quilt ID by trying to fetch patches
   // If it's a quilt ID, we'll process all patches. If it's a patch ID, we'll process it directly.
-  console.log("📥 Step 1: Checking if blobId is a quilt ID or patch ID...");
+  logger.log("📥 Step 1: Checking if blobId is a quilt ID or patch ID...");
   
   let patches = null;
   try {
     patches = await services.blockchain.walrus.fetchQuiltPatches(parsedArgs.blobId);
     if (patches && patches.length > 0) {
-      console.log(`✅ Detected quilt ID. Found ${patches.length} patches. Processing as quilt...`);
+      logger.log(`✅ Detected quilt ID. Found ${patches.length} patches. Processing as quilt...`);
       // It's a quilt ID - process all patches
-      await processQuiltPatches(patches, parsedArgs);
-      console.log("✅ Task completed successfully!");
-      console.log("===TASK_RESULT_START===");
-      console.log(JSON.stringify({ originalBlobId: parsedArgs.blobId, type: "quilt" }));
-      console.log("===TASK_RESULT_END===");
+      const summary = await processQuiltPatches(patches, parsedArgs);
+      
+      const result = {
+        originalBlobId: parsedArgs.blobId,
+        type: "quilt",
+        summary: summary
+      };
+      
+      logger.log("✅ Task completed successfully!");
+      logger.log("===TASK_RESULT_START===");
+      logger.log(JSON.stringify(result));
+      logger.log("===TASK_RESULT_END===");
       console.timeEnd('⌚ runDefaultOperation <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<');
       process.exit(0);
       return;
     }
   } catch (error) {
     // Not a quilt ID, treat as patch ID
-    console.log(`ℹ️  Not a quilt ID (${error.message}). Treating as patch ID...`);
+    logger.log(`ℹ️  Not a quilt ID (${error.message}). Treating as patch ID...`);
   }
   
   // Step 2: Treat as patch ID and fetch encrypted file from Walrus
-  console.log("📥 Step 2: Fetching encrypted file as patch ID...");
+  logger.log("📥 Step 2: Fetching encrypted file as patch ID...");
   const encryptedFile = await services.blockchain.walrus.fetchEncryptedFile(parsedArgs.blobId);
   
   // Step 3: Parse encrypted object
-  console.log("📦 Step 3: Parsing encrypted object...");
+  logger.log("📦 Step 3: Parsing encrypted object...");
   const encryptedObject = await services.blockchain.seal.parseEncryptedObject(encryptedFile);
   
   // Step 4: Register attestation
-  // console.log("🔗 Step 4: Registering attestation...");
+  // logger.log("🔗 Step 4: Registering attestation...");
   // const attestationObjId = await services.blockchain.sui.registerAttestation(
   //   encryptedObject.id, 
   //   parsedArgs.enclaveId, 
   // );
   
   // Step 5: Decrypt file
-  console.log("🔓 Step 5: Decrypting file...");
+  logger.log("🔓 Step 5: Decrypting file...");
   const decryptedFile = await services.blockchain.seal.decryptFile(
     encryptedObject.id, // seal id
     // attestationObjId,
@@ -1036,7 +1168,7 @@ async function runDefaultOperation() {
   );
   
   // Step 6: Process embeddings directly from decrypted data
-  console.log("🔤 Step 6: Processing embeddings directly from decrypted data...");
+  logger.log("🔤 Step 6: Processing embeddings directly from decrypted data...");
   await processMessagesByMessage(
     decryptedFile,
     services,
@@ -1052,16 +1184,22 @@ async function runDefaultOperation() {
 );
   
   // Output results
+  summaryReporter.end();
+  const summary = summaryReporter.generateSummary();
+  
   const result = {
     // attestationObjId,
     originalBlobId: parsedArgs.blobId,
-    type: "patch"
+    type: "patch",
+    summary: summary
   };
   
-  console.log("✅ Task completed successfully!");
-  console.log("===TASK_RESULT_START===");
-  console.log(JSON.stringify(result));
-  console.log("===TASK_RESULT_END===");
+  summaryReporter.printSummary(logger);
+  
+  logger.log("✅ Task completed successfully!");
+  logger.log("===TASK_RESULT_START===");
+  logger.log(JSON.stringify(result));
+  logger.log("===TASK_RESULT_END===");
   console.timeEnd('⌚ runDefaultOperation <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<');
   process.exit(0);
 }
@@ -1070,58 +1208,128 @@ async function runDefaultOperation() {
 async function processQuiltPatches(patches, parsedArgs) {
   const idUnmasker = new IdUnmasker();
   
-  console.log(`✅ Found ${patches.length} patches in quilt`);
+  logger.log(`✅ Found ${patches.length} patches in quilt`);
   
-  // Fetch all patches in parallel using Promise.all() (as recommended by Walrus developer)
-  console.log(`🚀 Fetching ${patches.length} patches in parallel...`);
+  // Group patches into groups, then randomly select from each group
+  const groups = [];
+  for (let i = 0; i < patches.length; i += GROUP_SIZE) {
+    groups.push(patches.slice(i, i + GROUP_SIZE));
+  }
   
-  const fetchResults = await Promise.allSettled(
-    patches.map(async (patch, i) => {
-      // The patch object from /v1/quilts/{quilt_id}/patches has a "patch_id" field
-      // This is the quilt patch ID used with /v1/blobs/by-quilt-patch-id/{quilt_patch_id}
-      const patchId = patch.patch_id || patch.id || patch.identifier;
+  logger.log(`📦 Grouped ${patches.length} patches into ${groups.length} groups of up to ${GROUP_SIZE} patches each`);
+  
+  // Select 30 patches from each group
+  const originalTotalPatches = patches.length;
+  const selectedPatches = [];
+  
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i];
+    const selectCount = Math.min(SELECT_PER_GROUP, group.length);
+    const groupSelected = getRandomItems(group, selectCount);
+    selectedPatches.push(...groupSelected);
+    logger.log(`   Group ${i + 1} (${group.length} patches): selected ${selectCount} patches`);
+  }
+  
+  logger.log(`🎲 Selected ${selectedPatches.length} patches total (${SELECT_PER_GROUP} from each group of ${GROUP_SIZE})`);
+  logger.log(`⏭️  Skipping ${originalTotalPatches - selectedPatches.length} patches`);
+  
+  // Record patch selection in summary reporter
+  summaryReporter.recordPatchSelection(originalTotalPatches, selectedPatches.length);
+  
+  // Use only the selected patches for processing
+  patches = selectedPatches;
+  
+  // Create rate limiter to prevent overwhelming the API (reduce 429 errors)
+  // IMPORTANT: Each patch operation makes multiple HTTP requests:
+  // - 1 to Walrus aggregator (fetchEncryptedFile)
+  // - Multiple to Sui RPC (tx.build in sealApprove, sessionKey.create, etc.)
+  // - Requests to Ruby Nodes API (via SealClient)
+  // With retry logic, we can balance speed and rate limit safety
+  // Walrus aggregator defaults: max 256 concurrent, 384 buffer
+  // Using constants: MAX_CONCURRENT_FETCHES concurrent patches (each makes 3-5 HTTP requests = ~60-100 total concurrent)
+  const rateLimiter = new RateLimiter(MAX_CONCURRENT_FETCHES, FETCH_DELAY_MS, MAX_RETRIES);
+  
+  logger.log(`🚀 Fetching ${patches.length} patches with rate limiting (max ${MAX_CONCURRENT_FETCHES} concurrent, ${FETCH_DELAY_MS}ms delay, ${MAX_RETRIES} retries for 429 errors)...`);
+  
+  // Create fetch functions
+  const fetchFunctions = patches.map((patch, i) => async () => {
+    // The patch object from /v1/quilts/{quilt_id}/patches has a "patch_id" field
+    // This is the quilt patch ID used with /v1/blobs/by-quilt-patch-id/{quilt_patch_id}
+    const patchId = patch.patch_id || patch.id || patch.identifier;
+    
+    if (!patchId) {
+      throw new Error(`Patch at index ${i} missing patch_id field (expected from /v1/quilts/{quilt_id}/patches)`);
+    }
+    
+    try {
+      // Fetch encrypted patch blob from Walrus (rate limited!)
+      const encryptedPatch = await services.blockchain.walrus.fetchEncryptedFile(patchId);
       
-      if (!patchId) {
-        throw new Error(`Patch at index ${i} missing patch_id field (expected from /v1/quilts/{quilt_id}/patches)`);
-      }
+      // Parse encrypted object
+      const encryptedObject = await services.blockchain.seal.parseEncryptedObject(encryptedPatch);
       
-      try {
-        // Fetch encrypted patch blob from Walrus (all fetches happen in parallel!)
-        const encryptedPatch = await services.blockchain.walrus.fetchEncryptedFile(patchId);
-        
-        // Parse encrypted object
-        const encryptedObject = await services.blockchain.seal.parseEncryptedObject(encryptedPatch);
-        
-        // Decrypt patch
-        const decryptedPatch = await services.blockchain.seal.decryptFile(
-          encryptedObject.id,
-          encryptedPatch,
-          parsedArgs.policyObjectId,
-          services.blockchain.sui
-        );
-        
-        return {
-          patchIndex: i,
-          patch: patch,
-          patchId: patchId,
-          encryptedPatch: encryptedPatch,
-          encryptedObject: encryptedObject,
-          decryptedPatch: decryptedPatch,
-          success: true
-        };
-      } catch (error) {
-        return {
-          patchIndex: i,
-          patch: patch,
-          patchId: patchId,
-          success: false,
-          error: error.message
-        };
-      }
-    })
-  );
+      // Decrypt patch
+      const decryptedPatch = await services.blockchain.seal.decryptFile(
+        encryptedObject.id,
+        encryptedPatch,
+        parsedArgs.policyObjectId,
+        services.blockchain.sui
+      );
+      
+      return {
+        patchIndex: i,
+        patch: patch,
+        patchId: patchId,
+        encryptedPatch: encryptedPatch,
+        encryptedObject: encryptedObject,
+        decryptedPatch: decryptedPatch,
+        success: true
+      };
+    } catch (error) {
+      return {
+        patchIndex: i,
+        patch: patch,
+        patchId: patchId,
+        success: false,
+        error: error.message
+      };
+    }
+  });
   
-  console.log(`✅ Finished fetching patches. Processing ${fetchResults.length} results...`);
+  // Execute with rate limiting
+  const fetchResults = await rateLimiter.executeAll(fetchFunctions);
+  
+  // Aggregate fetch results for better error reporting
+  const successfulFetches = fetchResults.filter(r => r.status === 'fulfilled' && r.value.success).length;
+  const failedFetches = fetchResults.length - successfulFetches;
+  
+  // Record fetch results in summary
+  summaryReporter.recordFetchResults(successfulFetches, failedFetches);
+  
+  if (failedFetches > 0) {
+    logger.log(`⚠️  Finished fetching patches: ${successfulFetches} succeeded, ${failedFetches} failed`);
+    // Always record error types for aggregation, but only log details if few failures
+    fetchResults.forEach((result, i) => {
+      if (result.status === 'rejected' || (result.status === 'fulfilled' && !result.value.success)) {
+        const patchId = patches[i].patch_id || patches[i].id || patches[i].identifier || `index ${i}`;
+        const error = result.status === 'rejected' ? result.reason?.message : result.value.error;
+        
+        // Always record in summary for aggregation (even if many failures)
+        summaryReporter.recordError(`Failed to fetch patch ${i + 1} (${patchId}): ${error}`);
+        
+        // Only log to file if few failures (to avoid spam)
+        if (failedFetches <= 10) {
+          logger.error(`❌ Failed to fetch patch ${i + 1} (${patchId}): ${error}`);
+        }
+      }
+    });
+    
+    if (failedFetches > 10) {
+      logger.error(`❌ ${failedFetches} patches failed to fetch. Error types aggregated in summary.`);
+    }
+  } else {
+    logger.log(`✅ Finished fetching patches. All ${fetchResults.length} patches fetched successfully.`);
+  }
   
   // Process fetched patches sequentially
   for (let i = 0; i < fetchResults.length; i++) {
@@ -1130,23 +1338,23 @@ async function processQuiltPatches(patches, parsedArgs) {
     const patchId = patch.patch_id || patch.id || patch.identifier;
     
     if (fetchResult.status === 'rejected') {
-      console.error(`❌ Failed to fetch patch ${i + 1} (${patchId}): ${fetchResult.reason}`);
+      // Error already logged in aggregate above, skip individual logging
       continue;
     }
     
     const fetched = fetchResult.value;
     
     if (!fetched.success) {
-      console.error(`❌ Failed to fetch patch ${i + 1} (${patchId}): ${fetched.error}`);
+      // Error already logged in aggregate above, skip individual logging
       continue;
     }
     
-    console.log(`\n📦 Processing patch ${i + 1}/${patches.length} (patch_id: ${patchId})`);
+    logger.log(`\n📦 Processing patch ${i + 1}/${patches.length} (patch_id: ${patchId})`);
     
     try {
       // Unmask patch tags to get original IDs
       const unmaskedTags = idUnmasker.unmaskPatchTags(fetched.patch);
-      // console.log(`🔓 Unmasked IDs - User: ${unmaskedTags.userId || 'N/A'}, Chat: ${unmaskedTags.chatId || 'N/A'}, Submission: ${unmaskedTags.submissionId || 'N/A'}`);
+      // logger.log(`🔓 Unmasked IDs - User: ${unmaskedTags.userId || 'N/A'}, Chat: ${unmaskedTags.chatId || 'N/A'}, Submission: ${unmaskedTags.submissionId || 'N/A'}`);
       
       // Process patch (each patch is a chat with messages)
       let patchData;
@@ -1203,28 +1411,44 @@ async function processQuiltPatches(patches, parsedArgs) {
         }
       };
       
-      console.log(`🔤 Processing patch messages with embeddings...`);
+      logger.log(`🔤 Processing patch messages with embeddings...`);
       const patchResult = await processMessagesByMessage(patchData, services, embeddingArgs);
       
       if (patchResult.status === "success") {
-        console.log(`✅ Patch ${i + 1} processed successfully: ${patchResult.processedCount || 0} messages`);
+        logger.log(`✅ Patch ${i + 1} processed successfully: ${patchResult.processedCount || 0} messages`);
+        summaryReporter.recordPatchProcessed(
+          true,
+          patchResult.processedCount || 0,
+          patchResult.successfulEmbeddings || 0,
+          patchResult.successfulVectorStorages || 0
+        );
       } else {
-        console.error(`❌ Patch ${i + 1} processing failed: ${patchResult.error || patchResult.failureReason}`);
+        logger.error(`❌ Patch ${i + 1} processing failed: ${patchResult.error || patchResult.failureReason}`);
+        summaryReporter.recordPatchProcessed(false);
+        summaryReporter.recordError(`Patch ${i + 1} processing failed: ${patchResult.error || patchResult.failureReason}`);
       }
       
     } catch (error) {
-      console.error(`❌ Failed to process patch ${i + 1} (${patchId}): ${error.message}`);
+      logger.error(`❌ Failed to process patch ${i + 1} (${patchId}): ${error.message}`);
+      summaryReporter.recordPatchProcessed(false);
+      summaryReporter.recordError(`Failed to process patch ${i + 1} (${patchId}): ${error.message}`);
     }
   }
+  
+  summaryReporter.end();
+  const summary = summaryReporter.generateSummary();
+  summaryReporter.printSummary(logger);
+  
+  return summary;
 }
 
 // Handle graceful shutdown
 process.on("SIGINT", () => {
-  console.log("\n🛑 Received SIGINT, shutting down gracefully...");
+  logger.log("\n🛑 Received SIGINT, shutting down gracefully...");
   process.exit(0);
 });
 process.on("SIGTERM", () => {
-  console.log("\n🛑 Received SIGTERM, shutting down gracefully...");
+  logger.log("\n🛑 Received SIGTERM, shutting down gracefully...");
   process.exit(0);
 });
 

@@ -140,7 +140,8 @@ class SuiOperations {
     }
 
     try {
-      console.log(`🔐 Creating seal approval transaction...`);
+      const logger = require("../../utils/logger");
+      logger.log(`🔐 Creating seal approval transaction...`);
       
       const tx = new Transaction();
       tx.setGasBudget(10_000_000);
@@ -161,10 +162,11 @@ class SuiOperations {
         onlyTransactionKind: true,
       });
 
-      console.log(`✅ Seal approval transaction built`);
+      logger.log(`✅ Seal approval transaction built`);
       return txBytes;
     } catch (err) {
-      console.error(`❌ Failed to create seal approval: ${err.message}`);
+      const logger = require("../../utils/logger");
+      logger.error(`❌ Failed to create seal approval: ${err.message}`);
       throw new Error(`sealApprove failed: ${err.message}`);
     }
   }

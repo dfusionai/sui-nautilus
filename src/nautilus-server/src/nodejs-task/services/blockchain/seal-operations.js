@@ -5,6 +5,7 @@ const {
 } = require("@mysten/seal");
 const { toHex } = require("@mysten/sui/utils");
 const crypto = require("crypto");
+const logger = require("../../utils/logger");
 
 class SealOperations {
   constructor(suiClient, options = {}) {
@@ -48,9 +49,9 @@ class SealOperations {
       // Step 1: Get the address
       try {
         address = suiOperations.getKeypairAddress();
-        console.log(`[address] 🎯 Got keypair address`);
+        logger.log(`[address] 🎯 Got keypair address`);
       } catch (err) {
-        console.error(`[address] ❌ Failed to get keypair address: ${err.message}`);
+        logger.error(`[address] ❌ Failed to get keypair address: ${err.message}`);
         throw new Error(`[address] ${err.message}`);
       }
 
@@ -62,29 +63,29 @@ class SealOperations {
           ttlMin: 10,
           suiClient: this.suiClient,
         });
-        console.log(`[sessionKey.create] 🎯 SessionKey created`);
+        logger.log(`[sessionKey.create] 🎯 SessionKey created`);
       } catch (err) {
-        console.error(`[sessionKey.create] ❌ Failed: ${err.message}`);
+        logger.error(`[sessionKey.create] ❌ Failed: ${err.message}`);
         throw new Error(`[sessionKey.create] ${err.message}`);
       }
 
       // Step 3: Get message from sessionKey
       try {
         message = sessionKey.getPersonalMessage();
-        console.log(`[sessionKey.getPersonalMessage] 🎯 Got personal message`);
+        logger.log(`[sessionKey.getPersonalMessage] 🎯 Got personal message`);
       } catch (err) {
-        console.error(`[sessionKey.getPersonalMessage] ❌ Failed: ${err.message}`);
+        logger.error(`[sessionKey.getPersonalMessage] ❌ Failed: ${err.message}`);
         throw new Error(`[getPersonalMessage] ${err.message}`);
       }
 
       // Step 4: Sign the message
       try {
         signature = await suiOperations.signPersonalMessage(message);
-        console.log(`[signPersonalMessage] 🎯 Signature generated`);
+        logger.log(`[signPersonalMessage] 🎯 Signature generated`);
         await sessionKey.setPersonalMessageSignature(signature.signature);
-        console.log(`[setPersonalMessageSignature] 🎯 Personal message signature set`);
+        logger.log(`[setPersonalMessageSignature] 🎯 Personal message signature set`);
       } catch (err) {
-        console.error(`[signPersonalMessage/setSignature] ❌ Failed: ${err.message}`);
+        logger.error(`[signPersonalMessage/setSignature] ❌ Failed: ${err.message}`);
         throw new Error(`[signPersonalMessage/setSignature] ${err.message}`);
       }
 
@@ -97,9 +98,9 @@ class SealOperations {
           // attestationObjId,
           // address
         );
-        console.log(`[sealApprove] 🎯 Seal approval received`);
+        logger.log(`[sealApprove] 🎯 Seal approval received`);
       } catch (err) {
-        console.error(`[sealApprove] ❌ Failed: ${err.message}`);
+        logger.error(`[sealApprove] ❌ Failed: ${err.message}`);
         throw new Error(`[sealApprove] ${err.message}`);
       }
 
@@ -120,7 +121,7 @@ class SealOperations {
       
       // Step 6: Decrypt the file
       try {
-        console.log(`[decrypt] 🔓 Decrypting file data...`);
+        logger.log(`[decrypt] 🔓 Decrypting file data...`);
         decryptedBytes = await this.sealClient.decrypt({
           data: new Uint8Array(encryptedFile),
           sessionKey,
@@ -128,9 +129,9 @@ class SealOperations {
           checkShareConsistency: false,
           checkLEEncoding: true,
         });
-        console.log(`[decrypt] 🎯 File decrypted`);
+        logger.log(`[decrypt] 🎯 File decrypted`);
       } catch (err) {
-        console.error(`[decrypt] ❌ File decryption failed: ${err.message}`);
+        logger.error(`[decrypt] ❌ File decryption failed: ${err.message}`);
         throw new Error(`[decrypt] ${err.message}`);
       }
 
@@ -138,29 +139,29 @@ class SealOperations {
       try {
         const decoder = new TextDecoder("utf-8");
         jsonString = decoder.decode(decryptedBytes);
-        console.log(`[decode/parse] 🎯 File decoded, parsing JSON...`);
+        logger.log(`[decode/parse] 🎯 File decoded, parsing JSON...`);
         return JSON.parse(jsonString);
       } catch (err) {
-        console.error(`[decode/parse] ❌ JSON decode/parse failed: ${err.message}`);
+        logger.error(`[decode/parse] ❌ JSON decode/parse failed: ${err.message}`);
         throw new Error(`[decode/parse] ${err.message}`);
       }
     } catch (err) {
       // This will catch errors re-thrown from any inner step
-      console.error(`❌ decryptFile failed: ${err.message}`);
+      logger.error(`❌ decryptFile failed: ${err.message}`);
       throw new Error(`decryptFile failed: ${err.message}`);
     }
   }
 
   async encryptFile(refinedData, policyObjectId) {
     try {
-      console.log(`🔒 Encrypting processed data...`);
+      logger.log(`🔒 Encrypting processed data...`);
       
       const { fromHex } = require("@mysten/sui/utils");
       const policyObjectBytes = fromHex(policyObjectId);
       const nonce = crypto.getRandomValues(new Uint8Array(5));
       const id = toHex(new Uint8Array([...policyObjectBytes, ...nonce]));
 
-      console.log(`🔒 Generated encryption ID: ${id}`);
+      logger.log(`🔒 Generated encryption ID: ${id}`);
       
       const { encryptedObject: encryptedBytes } = await this.sealClient.encrypt({
         threshold: 1,
@@ -169,10 +170,10 @@ class SealOperations {
         data: new Uint8Array(new TextEncoder().encode(JSON.stringify(refinedData))),
       });
 
-      console.log(`✅ Data encrypted successfully`);
+      logger.log(`✅ Data encrypted successfully`);
       return encryptedBytes;
     } catch (err) {
-      console.error(`❌ Failed to encrypt file: ${err.message}`);
+      logger.error(`❌ Failed to encrypt file: ${err.message}`);
       throw new Error(`encryptFile failed: ${err.message}`);
     }
   }
@@ -184,10 +185,10 @@ class SealOperations {
       const encryptedData = new Uint8Array(encryptedFile);
       const encryptedObject = await EncryptedObject.parse(encryptedData);
       
-      console.log(`📦 Parsed encrypted object with ID: ${encryptedObject.id}`);
+      logger.log(`📦 Parsed encrypted object with ID: ${encryptedObject.id}`);
       return encryptedObject;
     } catch (err) {
-      console.error(`❌ Failed to parse encrypted object: ${err.message}`);
+      logger.error(`❌ Failed to parse encrypted object: ${err.message}`);
       throw new Error(`parseEncryptedObject failed:  ${JSON.stringify(err)}}`);
     }
   }

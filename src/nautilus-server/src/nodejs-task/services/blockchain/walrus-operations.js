@@ -60,7 +60,8 @@ class WalrusOperations {
     const walrusUrl = `${this.aggregatorUrl}/v1/blobs/by-quilt-patch-id/${quiltPatchId}`;
     
     try {
-      console.log(`📥 Fetching encrypted file from ${walrusUrl}`);
+      // Reduced verbosity: only log on success for batch operations
+      // Individual fetch attempts are logged at aggregate level in index.js
       
       const res = await fetch(walrusUrl, {
         headers: { "Content-Type": "application/octet-stream" },
@@ -76,10 +77,11 @@ class WalrusOperations {
         throw new Error("Empty response from Walrus");
       }
       
-      console.log(`✅ Successfully fetched encrypted file (${encryptedFile.byteLength} bytes)`);
+      // Only log success for single-file operations (not batch)
+      // Batch operations will log aggregate results
       return encryptedFile;
     } catch (err) {
-      console.error(`❌ Failed to fetch encrypted file: ${err.message}`);
+      // Don't log individual errors here - let the caller handle aggregate logging
       throw new Error(`fetchEncryptedFile failed: ${err.message}`);
     }
   }
